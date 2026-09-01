@@ -113,7 +113,7 @@ CREATE TABLE fact_stock_movement (
   INDEX ix_fsm_product (product_key)
 ) ENGINE=InnoDB;
 
--- ---------------- reporting views (consumed by Power BI Desktop) ----------------
+-- ---------------- reporting views (consumed by the built-in dashboards) --------
 CREATE VIEW vw_daily_sales AS
 SELECT d.full_date, d.year, d.quarter, d.month, d.month_name,
        d.day_name, d.is_weekend,

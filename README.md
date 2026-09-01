@@ -3,8 +3,8 @@
 Locally hosted web application for **J1 Scooter Parts and Accessories**. Implements
 the capstone design: direct sales entry → operational MySQL database → internal
 Python ETL → MySQL star-schema warehouse → descriptive/diagnostic dashboards,
-five-model 30-day forecasting, and a rule-based decision-support layer. Power BI
-Desktop connects to the same warehouse for the heavy visuals.
+five-model 30-day forecasting, and a rule-based decision-support layer. All
+dashboards are built into the app — there is one interface for the owner.
 
 No internet or cloud service is required at run time.
 
@@ -17,7 +17,6 @@ No internet or cloud service is required at run time.
 | Python 3.14 (`scoop install python`) | ✅ installed |
 | MySQL 8.0 Server (`MySQL80` service) | ✅ running |
 | Python packages (`requirements.txt`) | ✅ installed into `.venv` |
-| Power BI Desktop | ⬜ install from Microsoft Store (free) — needed only for the dashboards |
 
 The virtual environment lives in `.venv`. Run everything with
 `./.venv/Scripts/python.exe` (Git Bash) or `.venv\Scripts\python.exe` (PowerShell).
@@ -74,21 +73,22 @@ into `backups/`.
 
 ---
 
-## 4. Power BI dashboards
+## 4. Dashboards (built into the app)
 
-1. Install **Power BI Desktop** (Microsoft Store).
-2. *Home → Get data → MySQL database.*
-   * Server: `127.0.0.1:3306`  Database: `j1spa_dw`
-   * User / password: from `.env` (`DB_USER` / `DB_PASSWORD`).
-   * If prompted for a connector, install *MySQL Connector/NET*.
-3. Load these warehouse objects:
-   * `vw_daily_sales` — revenue, cost, gross profit, units by date / product / category / brand / source
-   * `vw_monthly_sales` — monthly rollup (use for trend visuals)
-   * `vw_product_velocity` — trailing-90-day units / revenue / gross profit per SKU
-   * `dim_date`, `dim_product`, `dim_category`, `dim_source`, `fact_transactions` — for a custom model
-4. Suggested pages: Revenue Performance, Gross Profit Margin, Product Movement,
-   Velocity Classification. Set *Refresh* to on-demand or scheduled;
-   the app keeps the warehouse current via the ETL.
+The owner works from a single interface — no separate BI tool. The Executive
+Dashboard and the forecasting/decision-support pages read straight from the
+star-schema warehouse, which the ETL keeps current (every 15 min plus the
+on-demand **Refresh** button).
+
+Warehouse objects behind the visuals:
+
+* `vw_daily_sales` — revenue, cost, gross profit, units by date / product / category / brand / source
+* `vw_monthly_sales` — monthly rollup for trend charts
+* `vw_product_velocity` — trailing-90-day units / revenue / gross profit per SKU
+* `dim_date`, `dim_product`, `dim_category`, `dim_source`, `fact_transactions` — the star schema
+
+Dashboard views: Revenue Performance, Gross Profit Margin, Product Movement,
+Velocity Classification.
 
 ---
 
