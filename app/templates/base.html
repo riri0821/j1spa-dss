@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{{ app_name }}{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}?v={{ static_v }}">
+</head>
+<body class="app-shell">
+{% if current_user.is_authenticated %}
+<aside class="sidebar">
+  <div class="side-brand">
+    <span class="mark"><svg viewBox="0 0 24 24"><path d="M4 20h16v-2H4v2zM6 16h3V7H6v9zm5 0h3V4h-3v12zm5 0h3v-6h-3v6z"/></svg></span>
+    <div><b>J1SPA Analytics</b><small>Business intelligence</small></div>
+  </div>
+
+  <nav class="side-nav">
+    {% macro navlink(endpoint, label, icon) -%}
+      <a href="{{ url_for(endpoint) }}"
+         class="{{ 'active' if request.blueprint == endpoint.split('.')[0] else '' }}">
+        <span class="ic">{{ icon|safe }}</span>{{ label }}
+      </a>
+    {%- endmacro %}
+
+    {% if nav_role == 'owner' %}
+      <div class="side-group">Analytics</div>
+      {{ navlink('analytics.dashboard', 'Dashboard', '<svg viewBox="0 0 24 24"><path d="M3 3h8v8H3V3zm10 0h8v5h-8V3zM3 13h8v8H3v-8zm10 3h8v5h-8v-5z"/></svg>') }}
+      {{ navlink('forecasting.workspace', 'Forecasting', '<svg viewBox="0 0 24 24"><path d="M3 17l6-6 4 4 7-8 1.5 1.4L13 18l-4-4-4.5 4.5z"/></svg>') }}
+      {{ navlink('alerts.screen', 'Decision Support', '<svg viewBox="0 0 24 24"><path d="M12 2 1 21h22L12 2zm0 6 6.5 11h-13L12 8zm-1 4h2v4h-2zm0 5h2v2h-2z"/></svg>') }}
+      <div class="side-group">Operations</div>
+      {{ navlink('sales.screen', 'Sales Entry', '<svg viewBox="0 0 24 24"><path d="M7 4h10l1 2h3v2H3V6h3l1-2zm-2 6h14l-1.5 10H6.5L5 10z"/></svg>') }}
+      {{ navlink('stockin.screen', 'Stock In', '<svg viewBox="0 0 24 24"><path d="M12 3l4 4h-3v6h-2V7H8l4-4zM4 15h16v6H4v-6z"/></svg>') }}
+      {{ navlink('products.screen', 'Products', '<svg viewBox="0 0 24 24"><path d="M3 7l9-4 9 4-9 4-9-4zm0 5l9 4 9-4v5l-9 4-9-4v-5z"/></svg>') }}
+      <div class="side-group">System</div>
+      {{ navlink('imports.screen', 'Data Import', '<svg viewBox="0 0 24 24"><path d="M12 16l-5-5h3V4h4v7h3l-5 5zM5 18h14v2H5z"/></svg>') }}
+      {{ navlink('settings.screen', 'Settings', '<svg viewBox="0 0 24 24"><path d="M12 8a4 4 0 100 8 4 4 0 000-8zm9 4l-2-1.5.3-2.5-2.4-1-1.2-2.2L13 4 12 2 11 4 8.3 4.8 7 7 4.6 8 5 10.5 3 12l2 1.5L4.6 16 7 17l1.3 2.2L11 20l1 2 1-2 2.7-.8L17 17l2.4-1L19 13.5 21 12z"/></svg>') }}
+    {% else %}
+      <div class="side-group">Operations</div>
+      {{ navlink('sales.screen', 'Sales Entry', '<svg viewBox="0 0 24 24"><path d="M7 4h10l1 2h3v2H3V6h3l1-2zm-2 6h14l-1.5 10H6.5L5 10z"/></svg>') }}
+      {{ navlink('stockin.screen', 'Stock In', '<svg viewBox="0 0 24 24"><path d="M12 3l4 4h-3v6h-2V7H8l4-4zM4 15h16v6H4v-6z"/></svg>') }}
+    {% endif %}
+  </nav>
+
+  <div class="side-user">
+    <span class="avatar">{{ current_user.full_name[:1] | upper }}</span>
+    <div>
+      <b>{{ current_user.full_name }}</b>
+      <small>{{ 'Business Owner / Admin' if nav_role == 'owner' else 'Staff' }}</small>
+    </div>
+    <a class="side-logout" href="{{ url_for('auth.logout') }}" title="Log out">&#x23Fb;</a>
+  </div>
+</aside>
+{% endif %}
+
+<main class="content">
+  <header class="appbar">
+    <div>
+      <h1>{% block page_title %}{{ app_name }}{% endblock %}</h1>
+      {% block page_subtitle %}{% endblock %}
+    </div>
+    <div class="appbar-actions">{% block page_actions %}{% endblock %}</div>
+  </header>
+
+  <div class="content-body">
+    {% with msgs = get_flashed_messages(with_categories=true) %}
+      {% for cat, m in msgs %}<div class="flash {{ cat }}">{{ m }}</div>{% endfor %}
+    {% endwith %}
+    {% block content %}{% endblock %}
+  </div>
+</main>
+
+<script src="{{ url_for('static', filename='app.js') }}?v={{ static_v }}"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

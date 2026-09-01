@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Product Management{% endblock %}
+{% block page_title %}Product Management{% endblock %}
+{% block page_subtitle %}<p class="sub">Add and edit catalog items, prices, and reorder points.</p>{% endblock %}
+{% block content %}
+<div class="grid-2">
+  <section class="panel">
+    <h2 id="formTitle">Add Product</h2>
+    <form id="prodForm" class="stacked">
+      <input type="hidden" name="product_id" id="product_id">
+      <label>SKU <input name="sku" id="sku" required></label>
+      <label>Name <input name="name" id="name" required></label>
+      <div class="row">
+        <label>Category <input name="category" id="category"></label>
+        <label>Brand <input name="brand" id="brand"></label>
+      </div>
+      <div class="row">
+        <label>Supplier <input name="supplier" id="supplier"></label>
+        <label>Vehicle compatibility <input name="vehicle_compat" id="vehicle_compat"></label>
+      </div>
+      <div class="row">
+        <label>Unit cost <input type="number" step="0.01" name="unit_cost" id="unit_cost"></label>
+        <label>Unit price <input type="number" step="0.01" name="unit_price" id="unit_price"></label>
+      </div>
+      <div class="row">
+        <label>Reorder point <input type="number" name="reorder_point" id="reorder_point"></label>
+        <label>Opening stock <input type="number" name="opening_stock" id="opening_stock"></label>
+      </div>
+      <label class="inline"><input type="checkbox" name="is_active" id="is_active" checked> Active</label>
+      <div class="row">
+        <button type="submit">Save</button>
+        <button type="button" id="resetBtn" class="secondary">New</button>
+      </div>
+      <div id="formMsg" class="result"></div>
+    </form>
+  </section>
+  <section class="panel">
+    <h2>Catalog</h2>
+    <input id="prodSearch" class="search" placeholder="Search">
+    <div class="tbl-scroll">
+      <table class="tbl" id="catalogTbl">
+        <thead><tr><th>SKU</th><th>Name</th><th>Category</th><th class="num">Cost</th>
+          <th class="num">Price</th><th class="num">ROP</th><th class="num">In-stock</th><th>Origin</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+</div>
+{% endblock %}
+{% block scripts %}<script>productsScreen();</script>{% endblock %}

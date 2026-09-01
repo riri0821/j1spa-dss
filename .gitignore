@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+backups/
+data/historical/*.csv
+data/historical/*.xlsx
+data/historical/*.xls
+instance/
+*.log

@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Business Analytics & Sales Intelligence{% endblock %}
+{% block page_title %}Business Analytics &amp; Sales Intelligence{% endblock %}
+{% block page_subtitle %}<p class="sub">Business Owner / Admin access</p>{% endblock %}
+{% block page_actions %}
+  <div class="muted" id="dashMeta" style="font-size:12px;line-height:1.5"></div>
+  <a href="{{ url_for('imports.screen') }}"><button class="secondary">Import historical records</button></a>
+{% endblock %}
+{% block content %}
+<span id="refreshRow" class="muted" style="display:inline-flex;gap:10px;align-items:center;margin:0 0 14px">
+  <button id="refreshBtn" title="Sync the latest sales into the warehouse"><svg class="btn-ic" viewBox="0 0 24 24"><path d="M12 6V3L8 7l4 4V8a4 4 0 1 1-4 4H6a6 6 0 1 0 6-6z"/></svg>Refresh</button>
+  <span id="refreshMsg"></span>
+</span>
+
+<div class="kpi-row" id="kpis"></div>
+
+<section class="panel">
+  <h2 style="margin-bottom:2px">Product Velocity Classification</h2>
+  <p class="muted" style="margin:0 0 10px">Click any row to view demand forecast</p>
+  <div class="tbl-scroll">
+    <table class="tbl" id="velTbl">
+      <thead><tr>
+        <th>SKU</th><th>Item name</th><th>Category</th>
+        <th class="num">Current stock</th><th class="num">Reorder point</th><th>Status</th>
+      </tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+  <p class="muted" id="velNote" style="margin-top:8px"></p>
+</section>
+{% endblock %}
+{% block scripts %}<script>dashboardScreen();</script>{% endblock %}

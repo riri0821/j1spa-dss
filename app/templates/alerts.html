@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Decision Support{% endblock %}
+{% block page_title %}Active Rule-Based Advisories{% endblock %}
+{% block page_subtitle %}<p class="sub">Advisory only. Rules run against current stock balances.</p>{% endblock %}
+{% block page_actions %}
+  <button id="recomputeBtn" class="secondary">Recompute now</button>
+  <span id="advMsg" class="muted"></span>
+{% endblock %}
+{% block content %}
+<div class="chip-row" id="advChips"></div>
+
+<div id="advGroups"></div>
+
+<section class="panel">
+  <h2>Inventory Advisory Summary for All SKUs</h2>
+  <div class="tbl-scroll">
+    <table class="tbl" id="advSummary">
+      <thead><tr><th>Target SKU</th><th class="num">In-stock</th><th class="num">ROP</th>
+        <th class="num">30-day forecast</th><th class="num">Days to depletion</th><th>Recommendation</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</section>
+
+<div class="compliance-note">
+  <span class="ic">&#128274;</span>
+  <span><b>System Compliance and Advisory Framework.</b> This workspace provides
+  non-invasive decision support only. The system cannot execute automated procurement,
+  generate purchase orders, or modify inventory ledgers without direct, manual
+  authorization from the business owner.</span>
+</div>
+{% endblock %}
+{% block scripts %}<script>alertsScreen();</script>{% endblock %}
