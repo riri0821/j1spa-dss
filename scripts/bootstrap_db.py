@@ -32,7 +32,7 @@ def run_sql_script(cur, path: Path):
         cur.execute(stmt)
 
 
-def seed_dim_date(cur, start=date(2021, 1, 1), end=date(2027, 12, 31)):
+def seed_dim_date(cur, start=date(2020, 1, 1), end=date(2027, 12, 31)):
     cur.execute("USE j1spa_dw")
     d = start
     batch = []

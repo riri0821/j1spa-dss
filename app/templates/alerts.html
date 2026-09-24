@@ -8,11 +8,24 @@
 {% endblock %}
 {% block content %}
 <div class="chip-row" id="advChips"></div>
+<p class="muted" id="advBreakdown" style="margin:-6px 0 14px"></p>
+
+<div class="toolbar" id="advToolbar">
+  <input id="advSearch" class="search" style="width:220px" placeholder="Search SKU or item name…">
+  <select id="advTypeFilter" style="width:auto;min-width:170px">
+    <option value="">All advisory types</option>
+    <option value="low_stock">Low Stock Alert</option>
+    <option value="demand_spike">Demand Spike Warning</option>
+    <option value="overstock">Overstock Advisory</option>
+  </select>
+  <span class="tb-label" id="advFilterNote"></span>
+</div>
 
 <div id="advGroups"></div>
 
 <section class="panel">
-  <h2>Inventory Advisory Summary for All SKUs</h2>
+  <h2>All Flagged SKUs</h2>
+  <p class="muted" style="margin:0 0 10px">Every SKU with an active advisory, sorted most urgent first. Same filters as above.</p>
   <div class="tbl-scroll">
     <table class="tbl" id="advSummary">
       <thead><tr><th>Target SKU</th><th class="num">In-stock</th><th class="num">ROP</th>

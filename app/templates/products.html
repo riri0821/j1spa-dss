@@ -11,13 +11,15 @@
       <label>SKU <input name="sku" id="sku" required></label>
       <label>Name <input name="name" id="name" required></label>
       <div class="row">
-        <label>Category <input name="category" id="category"></label>
+        <label>Category
+          <select name="category" id="category">
+            <option value="__new__">+ Add new category…</option>
+          </select>
+          <input id="categoryNew" placeholder="New category name" class="hidden" style="margin-top:6px">
+        </label>
         <label>Brand <input name="brand" id="brand"></label>
       </div>
-      <div class="row">
-        <label>Supplier <input name="supplier" id="supplier"></label>
-        <label>Vehicle compatibility <input name="vehicle_compat" id="vehicle_compat"></label>
-      </div>
+      <label>Supplier <input name="supplier" id="supplier"></label>
       <div class="row">
         <label>Unit cost <input type="number" step="0.01" name="unit_cost" id="unit_cost"></label>
         <label>Unit price <input type="number" step="0.01" name="unit_price" id="unit_price"></label>

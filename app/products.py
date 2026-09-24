@@ -37,6 +37,54 @@ def api_list():
     return jsonify(rows)
 
 
+@bp.route("/api/categories")
+@login_required
+@owner_only
+def api_categories():
+    """Distinct categories already in use, for the Add/Edit Product dropdown
+    (keeps category names consistent instead of free-typed variants)."""
+    with ops_conn() as c:
+        rows = q(c, "SELECT DISTINCT category FROM products ORDER BY category")
+    return jsonify([r["category"] for r in rows])
+
+
+@bp.route("/api/delete", methods=["POST"])
+@login_required
+@owner_only
+def api_delete():
+    """Remove a catalog item. A product with recorded sales, stock movements,
+    or alerts can't be hard-deleted without breaking that history, so it's
+    deactivated (hidden from active lists) instead."""
+    data = request.get_json(silent=True) or {}
+    pid = data.get("product_id")
+    if not pid:
+        return jsonify(error="product_id is required."), 400
+    pid = int(pid)
+
+    with ops_conn() as c:
+        prod = q(c, "SELECT sku FROM products WHERE product_id = :pid", pid=pid)
+        if not prod:
+            return jsonify(error="Product not found."), 404
+        sku = prod[0]["sku"]
+
+        in_use = q(c, """
+            SELECT
+              (SELECT COUNT(*) FROM sale_items      WHERE product_id = :pid) AS si,
+              (SELECT COUNT(*) FROM stock_movements  WHERE product_id = :pid) AS sm,
+              (SELECT COUNT(*) FROM alerts            WHERE product_id = :pid) AS al
+        """, pid=pid)[0]
+
+        if in_use["si"] or in_use["sm"] or in_use["al"]:
+            c.execute(text("UPDATE products SET is_active = 0 WHERE product_id = :pid"),
+                      {"pid": pid})
+            return jsonify(ok=True, mode="deactivated", product_id=pid,
+                           message=f"{sku} has recorded sales/stock history, so it was "
+                                   f"deactivated instead of deleted.")
+
+        c.execute(text("DELETE FROM products WHERE product_id = :pid"), {"pid": pid})
+        return jsonify(ok=True, mode="deleted", product_id=pid, message=f"{sku} deleted.")
+
+
 def _form_values(form):
     return {
         "sku": form.get("sku", "").strip().upper(),

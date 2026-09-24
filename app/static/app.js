@@ -29,24 +29,46 @@ function el(tag, attrs = {}, ...kids) {
 }
 
 /* ---------- tiny inline-SVG charts (offline, no CDN) ---------- */
-function barChart(container, rows, { label, value, value2, h = 180 }) {
+function barChart(container, rows, { label, value, value2, h = 220 } = {}) {
   container.innerHTML = "";
   if (!rows.length) { container.append(el("p", { class: "muted" }, "No data yet.")); return; }
-  const w = Math.max(320, rows.length * 54);
-  const max = Math.max(1, ...rows.map(r => Math.max(+r[value] || 0, value2 ? +r[value2] || 0 : 0)));
-  const bw = value2 ? 18 : 30, gap = (w - 40) / rows.length;
-  const svg = `<svg width="${w}" height="${h + 28}" viewBox="0 0 ${w} ${h + 28}">
-    <line class="axis" x1="30" y1="${h}" x2="${w}" y2="${h}"/>
-    ${rows.map((r, i) => {
-      const x = 34 + i * gap;
-      const b1 = (+r[value] || 0) / max * (h - 10);
-      const b2 = value2 ? (+r[value2] || 0) / max * (h - 10) : 0;
-      return `<rect class="bar" x="${x}" y="${h - b1}" width="${bw}" height="${b1}"/>
-        ${value2 ? `<rect class="bar2" x="${x + bw + 2}" y="${h - b2}" width="${bw}" height="${b2}"/>` : ""}
-        <text class="lbl" x="${x + bw / 2}" y="${h + 14}" text-anchor="middle">${String(r[label]).slice(0, 8)}</text>`;
-    }).join("")}
+  const padL = 34, padB = 56, padT = 20;
+  const slot = value2 ? 76 : 66;
+  const w = Math.max(340, rows.length * slot + padL + 12);
+  const max = Math.max(1, ...rows.map(r => Math.max(+r[value] || 0, value2 ? +r[value2] || 0 : 0))) * 1.2;
+  const baseY = h - padB, innerH = baseY - padT;
+  const Y = v => padT + (1 - v / max) * innerH;
+  const bw = value2 ? 18 : 32, gap = (w - padL - 12) / rows.length;
+  const ellip = (s, n) => s.length > n ? s.slice(0, n - 1) + "…" : s;
+
+  const yticks = [0, max / 2, max].map(v => `
+    <line class="gridline" x1="${padL}" y1="${Y(v).toFixed(1)}" x2="${w - 4}" y2="${Y(v).toFixed(1)}"/>
+    <text class="lbl" x="${padL - 6}" y="${(Y(v) + 3).toFixed(1)}" text-anchor="end">${Math.round(v)}</text>`).join("");
+
+  const bars = rows.map((r, i) => {
+    const slotW = value2 ? bw * 2 + 3 : bw;
+    const x0 = padL + i * gap + (gap - slotW) / 2;
+    const v1 = +r[value] || 0, y1 = Y(v1), hgt1 = Math.max(0, baseY - y1);
+    const cx = x0 + slotW / 2;
+    const v2 = value2 ? +r[value2] || 0 : null;
+    const bar2 = value2 != null ? (() => {
+      const y2 = Y(v2), hgt2 = Math.max(0, baseY - y2);
+      return `<rect class="bar2" x="${(x0 + bw + 3).toFixed(1)}" y="${y2.toFixed(1)}" width="${bw}" height="${hgt2.toFixed(1)}" rx="3"/>`;
+    })() : "";
+    return `<g><title>${r[label]}: ${int(v1)}${value2 != null ? " / " + int(v2) : ""}</title>
+      <rect class="bar" x="${x0.toFixed(1)}" y="${y1.toFixed(1)}" width="${bw}" height="${hgt1.toFixed(1)}" rx="3"/>
+      ${bar2}
+      <text class="lbl val" x="${cx.toFixed(1)}" y="${(y1 - 6).toFixed(1)}" text-anchor="middle">${int(v1)}</text>
+      <text class="lbl" x="${cx.toFixed(1)}" y="${(baseY + 14).toFixed(1)}" text-anchor="end"
+        transform="rotate(-30 ${cx.toFixed(1)} ${(baseY + 14).toFixed(1)})">${ellip(String(r[label]), 14)}</text>
+    </g>`;
+  }).join("");
+
+  container.innerHTML = `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
+    ${yticks}
+    <line class="axis" x1="${padL}" y1="${baseY}" x2="${w - 4}" y2="${baseY}"/>
+    ${bars}
   </svg>`;
-  container.innerHTML = svg;
 }
 
 /* historical (solid) + forecast (dashed) line chart with a "now" divider */
@@ -86,6 +108,63 @@ function histForecastChart(container, hist, fc, { h = 260 } = {}) {
     <path class="fline" d="${line(fcPts)}"/>
     ${xlabels}
   </svg>`;
+}
+
+/* single-series solid line chart (e.g. monthly volume trend) */
+function simpleLineChart(container, points, { h = 180 } = {}) {
+  container.innerHTML = "";
+  if (points.length < 2) { container.append(el("p", { class: "muted" }, "Not enough history to plot.")); return; }
+  const n = points.length;
+  const w = Math.max(320, n * 90);
+  const padL = 40, padB = 24, padT = 10;
+  const max = Math.max(10, ...points.map(p => p.units)) * 1.15;
+  const X = i => padL + (i / (n - 1)) * (w - padL - 10);
+  const Y = v => padT + (1 - v / max) * (h - padT - padB);
+  const pts = points.map((p, i) => [X(i), Y(p.units)]);
+  const line = pts.map((p, i) => (i ? "L" : "M") + p[0].toFixed(1) + " " + p[1].toFixed(1)).join(" ");
+
+  const yticks = [0, max / 2, max].map(v => `
+    <line class="gridline" x1="${padL}" y1="${Y(v)}" x2="${w}" y2="${Y(v)}"/>
+    <text class="lbl" x="${padL - 6}" y="${Y(v) + 3}" text-anchor="end">${Math.round(v)}</text>`).join("");
+  const xlabels = points.map((p, i) => `<text class="lbl" x="${X(i)}" y="${h - 6}" text-anchor="middle">${p.label}</text>`).join("");
+  const dots = pts.map((p, i) => `<circle cx="${p[0]}" cy="${p[1]}" r="3.5" fill="var(--brand)"><title>${points[i].label}: ${int(points[i].units)} units</title></circle>`).join("");
+
+  container.innerHTML = `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
+    ${yticks}
+    <path class="vline" d="${line}"/>
+    ${dots}
+    ${xlabels}
+  </svg>`;
+}
+
+/* donut chart with a colored-dot legend (category / share breakdowns) */
+function donutChart(container, slices, { size = 150, stroke = 20 } = {}) {
+  container.innerHTML = "";
+  const total = slices.reduce((s, x) => s + x.value, 0);
+  if (!total) { container.append(el("p", { class: "muted" }, "No data yet.")); return; }
+  const r = (size - stroke) / 2, cx = size / 2, cy = size / 2, circ = 2 * Math.PI * r;
+  let acc = 0;
+  const arcs = slices.map(s => {
+    const frac = s.value / total;
+    const seg = frac * circ;
+    const dash = `${seg.toFixed(2)} ${(circ - seg).toFixed(2)}`;
+    const offset = -acc.toFixed(2);
+    acc += seg;
+    return `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${s.color}"
+      stroke-width="${stroke}" stroke-dasharray="${dash}" stroke-dashoffset="${offset}">
+      <title>${s.label}: ${Math.round(frac * 100)}%</title></circle>`;
+  }).join("");
+
+  const wrap = el("div", { class: "donut-wrap" });
+  wrap.innerHTML = `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}"
+      style="transform:rotate(-90deg);transform-origin:50% 50%">${arcs}</svg>`;
+  const legend = el("div", { class: "donut-legend" });
+  slices.forEach(s => legend.append(el("div", { class: "dl-row" },
+    el("span", { class: "sw", style: `background:${s.color}` }),
+    el("span", { class: "lab" }, s.label),
+    el("span", { class: "pct" }, Math.round(s.value / total * 100) + "%"))));
+  wrap.append(legend);
+  container.append(wrap);
 }
 
 /* =========================================================
@@ -162,6 +241,8 @@ function salesScreen() {
       `<hr><b>Total ${peso(rows.reduce((s, l) => s + l.qty * l.price, 0))}</b>`;
     dlg.showModal();
   });
+
+  dlg.querySelector('button[value="cancel"]').addEventListener("click", () => dlg.close());
 
   $("#confirmBtn").addEventListener("click", async e => {
     e.preventDefault(); dlg.close();
@@ -278,20 +359,44 @@ function stockInScreen() {
    ========================================================= */
 function productsScreen() {
   const form = $("#prodForm"), msg = $("#formMsg"), search = $("#prodSearch");
-  const fields = ["product_id", "sku", "name", "category", "brand", "supplier",
-    "vehicle_compat", "unit_cost", "unit_price", "reorder_point", "opening_stock"];
+  const catSel = $("#category"), catNew = $("#categoryNew");
+
+  const syncCategoryNew = () => {
+    const adding = catSel.value === "__new__";
+    catNew.classList.toggle("hidden", !adding);
+    if (adding) catNew.focus();
+  };
+  catSel.addEventListener("change", syncCategoryNew);
+
+  async function loadCategories(selected) {
+    try {
+      const cats = await api("/products/api/categories");
+      if (selected && !cats.includes(selected)) cats.push(selected);
+      cats.sort();
+      catSel.innerHTML = cats.map(c => `<option value="${c}">${c}</option>`).join("")
+        + `<option value="__new__">+ Add new category…</option>`;
+      catSel.value = selected && cats.includes(selected) ? selected : (cats[0] || "__new__");
+    } catch {}
+    syncCategoryNew();
+  }
 
   const reset = () => {
     form.reset(); $("#product_id").value = ""; $("#is_active").checked = true;
     $("#sku").disabled = false; $("#formTitle").textContent = "Add Product";
     $("#opening_stock").disabled = false; msg.textContent = "";
+    loadCategories();
   };
   $("#resetBtn").addEventListener("click", reset);
 
   form.addEventListener("submit", async e => {
     e.preventDefault();
+    if (catSel.value === "__new__" && !catNew.value.trim()) {
+      msg.className = "result err"; msg.textContent = "Enter a name for the new category.";
+      return;
+    }
     const fd = new FormData(form);
     fd.set("is_active", $("#is_active").checked ? "1" : "0");
+    if (catSel.value === "__new__") fd.set("category", catNew.value.trim());
     try {
       const r = await api("/products/save", { method: "POST", body: fd, headers: {} });
       msg.className = "result ok"; msg.textContent = `Product ${r.mode}.`;
@@ -299,25 +404,53 @@ function productsScreen() {
     } catch (err) { msg.className = "result err"; msg.textContent = err.message; }
   });
 
+  const TRASH_SVG = '<svg class="trash-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+    + 'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+    + '<path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>'
+    + '<path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>'
+    + '<line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>';
+
+  async function removeProduct(p) {
+    const ok = confirm(`Delete ${p.sku} — ${p.name}?\n\n`
+      + `If it has recorded sales or stock history it will be deactivated `
+      + `(hidden from active lists) instead of permanently deleted.`);
+    if (!ok) return;
+    try {
+      const r = await api("/products/api/delete", {
+        method: "POST", body: JSON.stringify({ product_id: p.product_id }),
+      });
+      msg.className = "result ok"; msg.textContent = r.message;
+      loadList();
+    } catch (err) { msg.className = "result err"; msg.textContent = err.message; }
+  }
+
   async function loadList() {
     try {
       const rows = await api("/products/api/list?q=" + encodeURIComponent(search.value));
       const tb = $("#catalogTbl tbody"); tb.innerHTML = "";
-      rows.forEach(p => tb.append(el("tr", {},
+      rows.forEach(p => tb.append(el("tr", { class: p.is_active ? "" : "row-inactive" },
         el("td", {}, p.sku), el("td", {}, p.name), el("td", {}, p.category),
         el("td", { class: "num" }, peso(p.unit_cost)), el("td", { class: "num" }, peso(p.unit_price)),
         el("td", { class: "num" }, p.reorder_point), el("td", { class: "num" }, p.stock_on_hand),
-        el("td", {}, el("span", { class: "stat stat-norecentsales" },
-          p.source_type === "Historical Migration" ? "Historical import" : "Direct entry")),
-        el("td", {}, el("button", { class: "secondary", onclick: () => fill(p) }, "Edit")))));
+        el("td", {},
+          el("span", { class: "stat stat-norecentsales" },
+            p.source_type === "Historical Migration" ? "Historical import" : "Direct entry"),
+          p.is_active ? "" : el("span", { class: "stat stat-lowstock", style: "margin-left:4px" }, "Inactive")),
+        el("td", { class: "row-actions" },
+          el("button", { class: "secondary", onclick: () => fill(p) }, "Edit"),
+          el("button", {
+            class: "icon-btn danger", title: "Delete " + p.sku, html: TRASH_SVG,
+            onclick: () => removeProduct(p),
+          })))));
     } catch {}
   }
-  function fill(p) {
+  async function fill(p) {
     $("#formTitle").textContent = "Edit " + p.sku;
     $("#product_id").value = p.product_id;
     $("#sku").value = p.sku; $("#sku").disabled = true;
-    $("#name").value = p.name; $("#category").value = p.category; $("#brand").value = p.brand;
-    $("#supplier").value = p.supplier; $("#vehicle_compat").value = p.vehicle_compat || "";
+    $("#name").value = p.name; $("#brand").value = p.brand;
+    await loadCategories(p.category);
+    $("#supplier").value = p.supplier;
     $("#unit_cost").value = p.unit_cost; $("#unit_price").value = p.unit_price;
     $("#reorder_point").value = p.reorder_point;
     $("#opening_stock").value = p.stock_on_hand; $("#opening_stock").disabled = true;
@@ -325,6 +458,7 @@ function productsScreen() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
   search.addEventListener("input", debounce(loadList, 200));
+  loadCategories();
   loadList();
 }
 
@@ -332,6 +466,38 @@ function productsScreen() {
    EXECUTIVE DASHBOARD  (built-in analytics dashboard)
    ========================================================= */
 function dashboardScreen() {
+  const CAT_COLORS = ["var(--cat-1)", "var(--cat-2)", "var(--cat-3)", "var(--cat-4)"];
+  let allRows = [];
+
+  function renderTracking() {
+    const catV = $("#catFilter").value, statusV = $("#statusFilter").value, moveV = $("#moveFilter").value;
+    const rows = allRows.filter(r =>
+      (!catV || r.category === catV) && (!statusV || r.status === statusV) && (!moveV || r.movement === moveV));
+    const tb = $("#velTbl tbody"); tb.innerHTML = "";
+    const lvlClass = s => s === "Low stock" ? "lvl-crit" : s === "Overstocked" ? "lvl-warn" : "lvl-good";
+    const pill = s => `<span class="stat stat-${s.toLowerCase().replace(/[^a-z]/g, "")}">${s}</span>`;
+    rows.forEach(r => {
+      const pct = Math.max(4, Math.min(100, Math.round(r.stock_on_hand / Math.max(1, r.reorder_point * 2) * 100)));
+      const lvl = el("div", { class: "stocklvl" },
+        el("span", { class: "track" }, el("span", { class: `fill ${lvlClass(r.status)}`, style: `width:${pct}%` })),
+        el("span", { class: "n" }, int(r.stock_on_hand)));
+      const tr = el("tr", {
+        class: "clickable",
+        onclick: () => { location.href = "/forecasting/?sku=" + encodeURIComponent(r.sku); },
+      },
+        el("td", {}, el("a", { href: "/forecasting/?sku=" + encodeURIComponent(r.sku) }, r.sku)),
+        el("td", {}, r.name),
+        el("td", {}, r.category),
+        el("td", {}, r.movement),
+        el("td", { class: "num" }, lvl),
+        el("td", { html: pill(r.status) }));
+      tb.append(tr);
+    });
+    $("#velNote").textContent =
+      `${rows.length} of ${allRows.length} active items shown. Movement class = trailing-90-day unit volume. `
+      + `Status compares current stock to the reorder point. Values reflect the last ETL sync.`;
+  }
+
   async function load() {
     try {
       const k = await api("/analytics/api/kpis");
@@ -339,7 +505,7 @@ function dashboardScreen() {
         `Historical repository: ${k.historical_window}<br>Last sync: ${k.last_sync}`;
       const d = k.gross_profit_margin_delta_pct;
       const delta = d == null ? "" :
-        ` <span style="font-size:12px;color:${d >= 0 ? "#2e7d32" : "#c62828"}">`
+        ` <span style="font-size:12px;color:${d >= 0 ? "var(--ok)" : "var(--crit)"}">`
         + `${d >= 0 ? "▲ +" : "▼ "}${d}%</span>`;
       $("#kpis").innerHTML = "";
       const kpi = (vHtml, label) => el("div", { class: "kpi" },
@@ -352,26 +518,74 @@ function dashboardScreen() {
 
     try {
       const rows = await api("/analytics/api/velocity-table");
-      const tb = $("#velTbl tbody"); tb.innerHTML = "";
-      const pill = s => `<span class="stat stat-${s.toLowerCase().replace(/[^a-z]/g, "")}">${s}</span>`;
-      rows.forEach(r => {
-        const tr = el("tr", {
-          class: "clickable",
-          onclick: () => { location.href = "/forecasting/?sku=" + encodeURIComponent(r.sku); },
-        },
-          el("td", {}, el("a", { href: "/forecasting/?sku=" + encodeURIComponent(r.sku) }, r.sku)),
-          el("td", {}, r.name),
-          el("td", {}, r.movement),
-          el("td", { class: "num" }, int(r.stock_on_hand)),
-          el("td", { class: "num" }, int(r.reorder_point)),
-          el("td", { html: pill(r.status) }));
-        tb.append(tr);
-      });
-      $("#velNote").textContent =
-        `${rows.length} active items. Movement class = trailing-90-day unit volume. `
-        + `Status compares current stock to the reorder point. Values reflect the last ETL sync.`;
+      allRows = rows;
+
+      // ---- operational KPI cards ----
+      const totalStock = rows.reduce((s, r) => s + r.stock_on_hand, 0);
+      const lowStock = rows.filter(r => r.status === "Low stock").length;
+      const noSales = rows.filter(r => r.movement === "No recent sales").length;
+      const card = (icClass, iconSvg, vTxt, kTxt, href, onClick) => {
+        const c = el("div", { class: "kpi2" + (onClick ? " kpi2-clickable" : "") });
+        c.innerHTML = `<div class="kpi2-top">
+            <div class="kpi2-ic ${icClass}">${iconSvg}</div>
+            <a class="kpi2-arrow" href="${href}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></a>
+          </div>
+          <div class="v">${vTxt}</div><div class="k">${kTxt}</div>`;
+        if (onClick) {
+          const go = e => { e.preventDefault(); onClick(); };
+          c.addEventListener("click", go);
+          c.querySelector(".kpi2-arrow").addEventListener("click", go);
+        }
+        return c;
+      };
+      const filterTrackingTo = (moveVal, statusVal) => {
+        $("#moveFilter").value = moveVal || "";
+        $("#statusFilter").value = statusVal || "";
+        $("#catFilter").value = "";
+        renderTracking();
+        $("#trackingPanel").scrollIntoView({ behavior: "smooth", block: "start" });
+      };
+      $("#opsKpis").innerHTML = "";
+      $("#opsKpis").append(
+        card("ic-brand", '<svg viewBox="0 0 24 24"><path d="M4 4h16v5H4V4zm1 6h14v10H5V10zm4 2v2h6v-2H9z"/></svg>',
+          int(totalStock), "Total units in stock", "#trackingPanel", () => filterTrackingTo("", "")),
+        card("ic-crit", '<svg viewBox="0 0 24 24"><path d="M12 2 1 21h22L12 2zm0 6 6.5 11h-13L12 8zm-1 4h2v4h-2zm0 5h2v2h-2z"/></svg>',
+          int(lowStock), "Restocking items (critical)", "/alerts/"),
+        card("ic-warn", '<svg viewBox="0 0 24 24"><path d="M4 4h16l-1 8h-4l-2 3h-2l-2-3H5L4 4zm1 10h14v6H5v-6z"/></svg>',
+          int(noSales), "Items with no recent sales", "#trackingPanel", () => filterTrackingTo("No recent sales", "")));
+
+      // ---- top 5 best-sellers (bar) ----
+      const top5 = [...rows].sort((a, b) => b.units_90d - a.units_90d).slice(0, 5);
+      barChart($("#topChart"), top5, { label: "name", value: "units_90d" });
+
+      // ---- category filter options ----
+      const cats = [...new Set(rows.map(r => r.category))].sort();
+      const sel = $("#catFilter"); const cur = sel.value;
+      sel.innerHTML = `<option value="">All Categories</option>`
+        + cats.map(c => `<option value="${c}">${c}</option>`).join("");
+      sel.value = cur;
+
+      // ---- stock-by-category donut ----
+      const byCat = {};
+      rows.forEach(r => { byCat[r.category] = (byCat[r.category] || 0) + r.stock_on_hand; });
+      const sorted = Object.entries(byCat).sort((a, b) => b[1] - a[1]);
+      const top = sorted.slice(0, 4).map(([label, value], i) => ({ label, value, color: CAT_COLORS[i] }));
+      const rest = sorted.slice(4).reduce((s, [, v]) => s + v, 0);
+      if (rest > 0) top.push({ label: "Other", value: rest, color: "var(--cat-other)" });
+      donutChart($("#catDonut"), top);
+
+      renderTracking();
     } catch (e) { $("#velNote").textContent = e.message; }
+
+    try {
+      const vol = await api("/analytics/api/monthly-volume");
+      simpleLineChart($("#volChart"), vol);
+    } catch (e) { $("#volChart").innerHTML = `<p class="muted">${e.message}</p>`; }
   }
+
+  $("#catFilter").addEventListener("change", renderTracking);
+  $("#statusFilter").addEventListener("change", renderTracking);
+  $("#moveFilter").addEventListener("change", renderTracking);
 
   $("#refreshBtn").addEventListener("click", async () => {
     const m = $("#refreshMsg"); m.textContent = "Syncing…";
@@ -457,12 +671,21 @@ function forecastingScreen() {
       row("Stock coverage gap", (d.coverage_gap > 0 ? "+" : "") + int(d.coverage_gap) + " units",
         gapNeg ? "dep-neg" : ""));
 
-    $("#riskBox").innerHTML = d.stockout_risk
+    // "insufficient_history" covers two different situations: zero sales ever
+    // recorded (no models computed at all) vs. some sales but under the
+    // 24-month minimum (models computed, just flagged low-confidence below).
+    // Only the first case has nothing to base a risk read on.
+    const hasModels = Object.keys(d.models || {}).length > 0;
+
+    $("#riskBox").innerHTML = !hasModels
+      ? `<div class="risk-box" style="border-color:var(--line);background:var(--surface-2)">
+         <div class="rt" style="color:var(--muted)">No sales history yet — stockout risk can't be assessed.</div></div>`
+      : d.stockout_risk
       ? `<div class="risk-box"><div class="rt">&#9888; Stockout risk detected</div>
          <p>Advisory only. The system will not auto-generate purchase orders.
          <a href="/alerts/">View decision-support advisories</a>.</p></div>`
-      : `<div class="risk-box" style="border-color:#bfe3c4;background:#eef7ef">
-         <div class="rt" style="color:#2e7d32">&#10003; Stock cover is adequate for the horizon</div></div>`;
+      : `<div class="risk-box" style="border-color:rgba(87,194,95,.35);background:var(--soft-ok)">
+         <div class="rt" style="color:var(--ok)">&#10003; Stock cover is adequate for the horizon</div></div>`;
 
     // ---- model comparison table (MSE primary, MAPE supporting) ----
     const tb = $("#modelTbl tbody"); tb.innerHTML = "";
@@ -479,14 +702,23 @@ function forecastingScreen() {
         el("td", { class: "num" }, m.next));
       tb.append(tr);
     });
-    $("#fcFoot").textContent =
-      `${d.observations_used} underlying historical observations · ${d.months_history} months. `
-      + `Primary metric MSE; the lowest-MSE model is selected per item.`;
+    if (!entries.length) {
+      tb.append(el("tr", {},
+        el("td", { colspan: "5", class: "muted" },
+          "No sales transactions recorded yet for this item — nothing to compare.")));
+    }
+    $("#fcFoot").textContent = hasModels
+      ? `${d.observations_used} underlying historical observations · ${d.months_history} months. `
+        + `Primary metric MSE; the lowest-MSE model is selected per item.`
+      : `${d.reason === "no sales history in the warehouse yet"
+          ? "No sales transactions recorded yet for this item."
+          : `${d.months_history} months of history available.`}`;
 
-    $("#fcFlags").innerHTML = d.insufficient_history
-      ? `<div class="flash error">Insufficient history (${d.months_history} months, need 24).
-         Forecast falls back to Simple Moving Average / naive and is flagged as low-confidence.</div>`
-      : "";
+    $("#fcFlags").innerHTML = !d.insufficient_history ? "" : !hasModels
+      ? `<div class="flash error">No sales transactions have been recorded for this item yet, so no
+         forecast model has run. Figures above are placeholders, not a real forecast.</div>`
+      : `<div class="flash error">Insufficient history (${d.months_history} months, need 24).
+         Forecast falls back to Simple Moving Average / naive and is flagged as low-confidence.</div>`;
   }
 }
 
@@ -500,6 +732,19 @@ function alertsScreen() {
     { key: "demand_spike", label: "Demand Spike Warning", sev: "warning" },
     { key: "overstock", label: "Overstock Advisory", sev: "warning" },
   ];
+  const PAGE_SIZE = 10;
+  const dtdKey = a => a.days_to_depletion == null ? Infinity : a.days_to_depletion;
+  const SORTERS = {
+    low_stock: (a, b) => dtdKey(a) - dtdKey(b),
+    overstock: (a, b) => b.on_hand - a.on_hand,
+    demand_spike: (a, b) => b.forecast_30d - a.forecast_30d,
+  };
+
+  let latest = null;               // last /api/latest payload
+  let severityFilter = null;       // null | "critical" | "warning"
+  const pages = new Map();         // advisory-group type key -> current page index (0-based)
+
+  function resetPaging() { pages.clear(); }
 
   function ruleLines(a) {
     const box = el("div", { class: "adv-rules" });
@@ -523,37 +768,85 @@ function alertsScreen() {
       rules);
   }
 
-  async function load() {
-    try {
-      const d = await api("/alerts/api/latest");
-      const crit = d.advisories.filter(a => a.severity === "critical").length;
-      const warn = d.advisories.length - crit;
-      $("#advMsg").textContent = "as of " + d.generated_at;
-      $("#advChips").innerHTML = "";
-      const chip = (v, l, cls) => el("span", { class: "chip " + (cls || "") },
-        el("b", {}, v), " " + l);
-      $("#advChips").append(
-        chip(crit, "critical", "chip-crit"),
-        chip(warn, "warnings", "chip-warn"),
-        chip(d.advisories.length, "total"));
+  function matchesFilters(a, type) {
+    const term = $("#advSearch").value.trim().toLowerCase();
+    const typeV = $("#advTypeFilter").value;
+    if (severityFilter && a.severity !== severityFilter) return false;
+    if (typeV && type !== typeV) return false;
+    if (term && !(a.sku.toLowerCase().includes(term) || a.name.toLowerCase().includes(term))) return false;
+    return true;
+  }
 
-      const groups = $("#advGroups"); groups.innerHTML = "";
-      if (!d.advisories.length)
-        groups.append(el("div", { class: "panel muted" }, "No advisories. Stock levels are within range."));
-      TYPES.forEach(t => {
-        const items = d.advisories.filter(a => a.type === t.key);
-        if (!items.length) return;
-        const det = el("details", { class: "adv-group" });
-        if (t.sev === "critical") det.open = true;
-        det.append(el("summary", {},
-          el("span", { class: "gdot g-" + t.sev }, ""),
-          `${t.label} `, el("b", {}, `(${items.length})`)));
-        items.forEach(a => det.append(advRow(a)));
-        groups.append(det);
-      });
+  function render() {
+    if (!latest) return;
+    const d = latest;
+    const crit = d.advisories.filter(a => a.severity === "critical").length;
+    const warn = d.advisories.length - crit;
 
-      const tb = $("#advSummary tbody"); tb.innerHTML = "";
-      d.summary.forEach(s => tb.append(el("tr", {},
+    $("#advChips").innerHTML = "";
+    const chip = (v, l, cls, sevValue) => {
+      const active = severityFilter === sevValue;
+      const c = el("span", {
+        class: "chip chip-clickable " + (cls || "") + (active ? " chip-active" : ""),
+        onclick: () => { severityFilter = active ? null : sevValue; resetPaging(); render(); },
+      }, el("b", {}, v), " " + l);
+      return c;
+    };
+    $("#advChips").append(
+      chip(crit, "critical", "chip-crit", "critical"),
+      chip(warn, "warnings", "chip-warn", "warning"),
+      chip(d.advisories.length, "total", "", null));
+
+    $("#advBreakdown").textContent = TYPES
+      .map(t => `${t.label}s: ${d.by_type[t.key] || 0}`).join("  ·  ");
+
+    const activeFilters = severityFilter || $("#advTypeFilter").value || $("#advSearch").value.trim();
+    $("#advFilterNote").textContent = activeFilters ? "Click a chip again to clear the severity filter." : "";
+
+    const groups = $("#advGroups"); groups.innerHTML = "";
+    const visibleTotal = d.advisories.filter(a => matchesFilters(a, a.type)).length;
+    if (!d.advisories.length) {
+      groups.append(el("div", { class: "panel muted" }, "No advisories. Stock levels are within range."));
+    } else if (!visibleTotal) {
+      groups.append(el("div", { class: "panel muted" }, "No advisories match the current search/filter."));
+    }
+    TYPES.forEach(t => {
+      const items = d.advisories.filter(a => a.type === t.key && matchesFilters(a, a.type))
+        .sort(SORTERS[t.key]);
+      if (!items.length) return;
+      const det = el("details", { class: "adv-group" });
+      det.open = t.sev === "critical" || !!activeFilters;
+      det.append(el("summary", {},
+        el("span", { class: "gdot g-" + t.sev }, ""),
+        `${t.label} `, el("b", {}, `(${items.length})`)));
+
+      const totalPages = Math.max(1, Math.ceil(items.length / PAGE_SIZE));
+      const page = Math.min(pages.get(t.key) || 0, totalPages - 1);
+      pages.set(t.key, page);
+      const shown = items.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+      shown.forEach(a => det.append(advRow(a)));
+
+      if (totalPages > 1) {
+        const goTo = n => { pages.set(t.key, n); render(); };
+        const prevAttrs = { class: "icon-btn secondary", onclick: () => goTo(page - 1) };
+        const nextAttrs = { class: "icon-btn secondary", onclick: () => goTo(page + 1) };
+        if (page === 0) prevAttrs.disabled = "disabled";
+        if (page === totalPages - 1) nextAttrs.disabled = "disabled";
+        det.append(el("div", { class: "adv-item pager" },
+          el("button", prevAttrs, "←"),
+          el("span", { class: "pager-label" }, `Page ${page + 1} of ${totalPages}`),
+          el("button", nextAttrs, "→")));
+      }
+      groups.append(det);
+    });
+
+    const typeBySku = new Map(d.advisories.map(a => [a.sku, a.type]));
+    const tb = $("#advSummary tbody"); tb.innerHTML = "";
+    d.summary
+      .filter(s => matchesFilters(s, typeBySku.get(s.sku)))
+      .sort((a, b) => (a.severity === b.severity ? dtdKey(a) - dtdKey(b)
+                       : a.severity === "critical" ? -1 : 1))
+      .forEach(s => tb.append(el("tr", {},
         el("td", {}, el("a", { href: fcLink(s.sku) }, s.sku)),
         el("td", { class: "num" }, int(s.on_hand)),
         el("td", { class: "num" }, int(s.rop)),
@@ -561,8 +854,19 @@ function alertsScreen() {
         el("td", { class: "num" + (s.severity === "critical" ? " dep-neg" : "") },
           s.days_to_depletion == null ? "-" : s.days_to_depletion + "d"),
         el("td", {}, s.recommendation))));
+  }
+
+  async function load() {
+    try {
+      latest = await api("/alerts/api/latest");
+      $("#advMsg").textContent = "as of " + latest.generated_at;
+      resetPaging();
+      render();
     } catch (e) { $("#advMsg").textContent = e.message; }
   }
+
+  $("#advSearch").addEventListener("input", debounce(() => { resetPaging(); render(); }, 150));
+  $("#advTypeFilter").addEventListener("change", () => { resetPaging(); render(); });
 
   $("#recomputeBtn").addEventListener("click", async () => {
     $("#advMsg").textContent = "Recomputing…";

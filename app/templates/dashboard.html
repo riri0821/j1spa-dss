@@ -14,14 +14,53 @@
 
 <div class="kpi-row" id="kpis"></div>
 
-<section class="panel">
-  <h2 style="margin-bottom:2px">Product Velocity Classification</h2>
-  <p class="muted" style="margin:0 0 10px">Click any row to view demand forecast</p>
+<div class="kpi-row2" id="opsKpis"></div>
+
+<div class="chart-row">
+  <section class="panel">
+    <h2>Top 5 Best-Selling Parts</h2>
+    <p class="muted" style="margin:0 0 10px">Trailing 90-day unit volume</p>
+    <div class="chart" id="topChart"></div>
+  </section>
+  <section class="panel">
+    <h2>Monthly Sales Volume</h2>
+    <p class="muted" style="margin:0 0 10px">Units sold, last 6 months</p>
+    <div class="chart" id="volChart"></div>
+  </section>
+  <section class="panel">
+    <h2>Stock by Category</h2>
+    <p class="muted" style="margin:0 0 10px">Share of units on hand</p>
+    <div id="catDonut"></div>
+  </section>
+</div>
+
+<section class="panel" id="trackingPanel">
+  <div class="tracking-head">
+    <div>
+      <h2 style="margin-bottom:2px">Tracking</h2>
+      <p class="muted" style="margin:0">Click any row to view demand forecast</p>
+    </div>
+    <div class="row" style="flex:none;gap:8px">
+      <select id="catFilter" style="width:auto;min-width:160px"><option value="">All Categories</option></select>
+      <select id="moveFilter" style="width:auto;min-width:150px">
+        <option value="">All Movement</option>
+        <option value="Fast-Moving">Fast-Moving</option>
+        <option value="Slow-Moving">Slow-Moving</option>
+        <option value="No recent sales">No recent sales</option>
+      </select>
+      <select id="statusFilter" style="width:auto;min-width:150px">
+        <option value="">All Statuses</option>
+        <option value="Low stock">Low stock</option>
+        <option value="Stable">Stable</option>
+        <option value="Overstocked">Overstocked</option>
+      </select>
+    </div>
+  </div>
   <div class="tbl-scroll">
     <table class="tbl" id="velTbl">
       <thead><tr>
-        <th>SKU</th><th>Item name</th><th>Category</th>
-        <th class="num">Current stock</th><th class="num">Reorder point</th><th>Status</th>
+        <th>SKU</th><th>Item name</th><th>Category</th><th>Movement</th>
+        <th class="num">Stock level</th><th>Status</th>
       </tr></thead>
       <tbody></tbody>
     </table>
