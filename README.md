@@ -1,10 +1,10 @@
-# J1SPA — Data-Driven Business Analytics & Predictive Decision Support System
+# J1SPA: Data-Driven Business Analytics & Predictive Decision Support System
 
 Locally hosted web application for **J1 Scooter Parts and Accessories**. Implements
-the capstone design: direct sales entry → operational MySQL database → internal
-Python ETL → MySQL star-schema warehouse → descriptive/diagnostic dashboards,
+the capstone design: direct sales entry -> operational MySQL database -> internal
+Python ETL -> MySQL star-schema warehouse -> descriptive/diagnostic dashboards,
 five-model 30-day forecasting, and a rule-based decision-support layer. All
-dashboards are built into the app — there is one interface for the owner.
+dashboards are built into the app; there is one interface for the owner.
 
 No internet or cloud service is required at run time.
 
@@ -42,14 +42,14 @@ cd C:\Users\user\desktop\j1spa-dss
 .venv\Scripts\python.exe scripts\run_historical_import.py
 ```
 
-For the **real** deployment, skip 2.3–2.4 and instead drop the store's real
+For the **real** deployment, skip 2.3-2.4 and instead drop the store's real
 `product_catalog.csv/xlsx` and `sales_records.csv/xlsx` into
 `data/historical/`, then run `run_historical_import.py` once.
 
 Expected columns (aliases are auto-detected):
 
-* **product_catalog** — `sku, name, category, brand, supplier, vehicle_compat, unit_cost, unit_price, reorder_point, opening_stock`
-* **sales_records** — `date, sku, quantity, unit_price, unit_cost` (price/cost optional; backfilled from the catalog)
+* **product_catalog**: `sku, name, category, brand, supplier, vehicle_compat, unit_cost, unit_price, reorder_point, opening_stock`
+* **sales_records**: `date, sku, quantity, unit_price, unit_cost` (price/cost optional; backfilled from the catalog)
 
 ---
 
@@ -75,17 +75,17 @@ into `backups/`.
 
 ## 4. Dashboards (built into the app)
 
-The owner works from a single interface — no separate BI tool. The Executive
+The owner works from a single interface; no separate BI tool. The Executive
 Dashboard and the forecasting/decision-support pages read straight from the
 star-schema warehouse, which the ETL keeps current (every 15 min plus the
 on-demand **Refresh** button).
 
 Warehouse objects behind the visuals:
 
-* `vw_daily_sales` — revenue, cost, gross profit, units by date / product / category / brand / source
-* `vw_monthly_sales` — monthly rollup for trend charts
-* `vw_product_velocity` — trailing-90-day units / revenue / gross profit per SKU
-* `dim_date`, `dim_product`, `dim_category`, `dim_source`, `fact_transactions` — the star schema
+* `vw_daily_sales`: revenue, cost, gross profit, units by date / product / category / brand / source
+* `vw_monthly_sales`: monthly rollup for trend charts
+* `vw_product_velocity`: trailing-90-day units / revenue / gross profit per SKU
+* `dim_date`, `dim_product`, `dim_category`, `dim_source`, `fact_transactions`: the star schema
 
 Dashboard views: Revenue Performance, Gross Profit Margin, Product Movement,
 Velocity Classification.
@@ -108,6 +108,8 @@ app/
   analytics.py            dashboard KPIs + Refresh + ETL status  (owner)
   forecasting_bp.py       five-model forecasting workspace       (owner)
   alerts_bp.py            rule-based advisories                  (owner)
+  imports_bp.py           one-time legacy data import            (owner)
+  settings_bp.py          password, staff accounts               (owner)
   etl/
     common.py             transforms + DCR / DRR / LSR metrics
     historical_import.py  one-time legacy load (full cleanse)
@@ -137,4 +139,4 @@ scripts/                  bootstrap_db, create_admin, seed + sample data, histor
 | 3.5 insufficient-history fallback (<24 mo) | `evaluate.evaluate_all` |
 | 3.6 rule-based decision support | `app/rules/engine.py` |
 | 3.8.3 R-04 backups | `app/backup.py`, `scheduler.py` |
-| 3.10 mock-ups | the eight templates |
+| 3.10 mock-ups | the page templates in `app/templates/` |
