@@ -29,14 +29,22 @@ export default async function DashboardPage() {
       <p className="text-zinc-600 dark:text-zinc-400">
         Signed in as {profile.full_name} ({user.email}) - role: owner.
       </p>
-      <a
-        href="/products"
-        className="w-fit rounded border border-zinc-300 px-4 py-2 text-sm text-black hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-50 dark:hover:bg-zinc-900"
-      >
-        Manage products
-      </a>
+      <div className="flex gap-3">
+        <a
+          href="/products"
+          className="w-fit rounded border border-zinc-300 px-4 py-2 text-sm text-black hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-50 dark:hover:bg-zinc-900"
+        >
+          Manage products
+        </a>
+        <a
+          href="/sales"
+          className="w-fit rounded border border-zinc-300 px-4 py-2 text-sm text-black hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-50 dark:hover:bg-zinc-900"
+        >
+          Record a sale
+        </a>
+      </div>
       <p className="text-sm text-zinc-500 dark:text-zinc-500">
-        Placeholder - sales/analytics/forecasting screens land in later phases.
+        Placeholder - stock-in/analytics/forecasting screens land in later phases.
       </p>
     </div>
   );
