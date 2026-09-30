@@ -33,7 +33,7 @@ export default async function DashboardPage() {
   const summary = summarizeDashboard(performance);
 
   return (
-    <div className="flex min-h-screen font-sans" style={{ backgroundColor: theme.pageBg }}>
+    <div className="flex h-screen overflow-hidden font-sans" style={{ backgroundColor: theme.pageBg }}>
       <Sidebar active="dashboard" fullName={profile.full_name} role={profile.role} />
 
       <main className="flex-1 overflow-y-auto p-8">
@@ -113,7 +113,10 @@ export default async function DashboardPage() {
 
 function Card({ title, subtitle, children }) {
   return (
-    <div className="rounded-lg border p-4" style={{ backgroundColor: theme.cardBg, borderColor: theme.border }}>
+    <div
+      className="flex flex-col rounded-lg border p-4"
+      style={{ backgroundColor: theme.cardBg, borderColor: theme.border }}
+    >
       <h2 className="text-sm font-semibold" style={{ color: theme.textPrimary }}>
         {title}
       </h2>
@@ -122,7 +125,7 @@ function Card({ title, subtitle, children }) {
           {subtitle}
         </p>
       )}
-      {children}
+      <div className="min-h-0 flex-1">{children}</div>
     </div>
   );
 }

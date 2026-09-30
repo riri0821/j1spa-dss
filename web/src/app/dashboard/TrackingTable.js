@@ -4,11 +4,13 @@ import { useMemo, useState } from "react";
 import { theme, STATUS, CATEGORICAL } from "./theme";
 
 const ABC_COLOR = { A: CATEGORICAL[0], B: "#5598e7", C: "#9ec5f4" };
+const PAGE_SIZE = 20;
 
 export default function TrackingTable({ rows }) {
   const [category, setCategory] = useState("all");
   const [movement, setMovement] = useState("all");
   const [status, setStatus] = useState("all");
+  const [page, setPage] = useState(1);
 
   const categories = useMemo(() => [...new Set(rows.map((r) => r.category))].sort(), [rows]);
 
@@ -19,19 +21,41 @@ export default function TrackingTable({ rows }) {
       (status === "all" || r.status === status)
   );
 
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  // Filters change which rows exist, so a page picked before may now be out
+  // of range - clamp it during render instead of stashing another copy of
+  // page state to keep in sync.
+  const currentPage = Math.min(page, totalPages);
+
+  const paginated = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+  const rangeStart = filtered.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1;
+  const rangeEnd = Math.min(currentPage * PAGE_SIZE, filtered.length);
+
+  function updateFilter(setter) {
+    return (value) => {
+      setter(value);
+      setPage(1);
+    };
+  }
+
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap gap-2">
-        <Select value={category} onChange={setCategory} options={["all", ...categories]} labelAll="All Categories" />
+        <Select
+          value={category}
+          onChange={updateFilter(setCategory)}
+          options={["all", ...categories]}
+          labelAll="All Categories"
+        />
         <Select
           value={movement}
-          onChange={setMovement}
+          onChange={updateFilter(setMovement)}
           options={["all", "Fast-moving", "Slow-moving", "No recent sales"]}
           labelAll="All Movement"
         />
         <Select
           value={status}
-          onChange={setStatus}
+          onChange={updateFilter(setStatus)}
           options={["all", "Low stock", "Overstocked", "Stable"]}
           labelAll="All Statuses"
         />
@@ -51,7 +75,7 @@ export default function TrackingTable({ rows }) {
             </tr>
           </thead>
           <tbody>
-            {filtered.map((r) => {
+            {paginated.map((r) => {
               const gaugeMax = Math.max(r.reorderPoint * 3, r.stockOnHand, 1);
               const pct = Math.min(100, Math.round((r.stockOnHand / gaugeMax) * 100));
               return (
@@ -111,6 +135,35 @@ export default function TrackingTable({ rows }) {
           </tbody>
         </table>
       </div>
+
+      {filtered.length > 0 && (
+        <div className="flex items-center justify-between text-xs" style={{ color: theme.textMuted }}>
+          <span>
+            Showing {rangeStart}-{rangeEnd} of {filtered.length}
+          </span>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setPage(Math.max(1, currentPage - 1))}
+              disabled={currentPage === 1}
+              className="rounded border px-2 py-1 disabled:cursor-not-allowed disabled:opacity-40"
+              style={{ borderColor: theme.border, color: theme.textSecondary }}
+            >
+              Prev
+            </button>
+            <span>
+              Page {currentPage} of {totalPages}
+            </span>
+            <button
+              onClick={() => setPage(Math.min(totalPages, currentPage + 1))}
+              disabled={currentPage === totalPages}
+              className="rounded border px-2 py-1 disabled:cursor-not-allowed disabled:opacity-40"
+              style={{ borderColor: theme.border, color: theme.textSecondary }}
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

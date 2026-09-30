@@ -2,6 +2,10 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { theme } from "../dashboard/theme";
+
+const inputClass = "rounded border px-3 py-1.5 text-sm";
+const inputStyle = { backgroundColor: theme.cardBgAlt, borderColor: theme.border, color: theme.textPrimary };
 
 export default function StockInScreen() {
   const supabase = createClient();
@@ -86,13 +90,18 @@ export default function StockInScreen() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+    <div className="flex flex-col gap-6" style={{ color: theme.textSecondary }}>
+      {error && <p className="text-sm text-red-400">{error}</p>}
 
       {recorded && (
-        <div className="rounded border border-green-300 bg-green-50 p-3 text-sm dark:border-green-800 dark:bg-green-950">
-          <p className="mb-1 font-semibold text-green-800 dark:text-green-300">Recorded:</p>
-          <ul className="flex flex-col gap-0.5 text-green-800 dark:text-green-300">
+        <div
+          className="rounded border p-3 text-sm"
+          style={{ borderColor: "#0ca30c55", backgroundColor: "#0ca30c1a" }}
+        >
+          <p className="mb-1 font-semibold" style={{ color: "#4ade80" }}>
+            Recorded:
+          </p>
+          <ul className="flex flex-col gap-0.5" style={{ color: "#4ade80" }}>
             {recorded.map((r, i) => (
               <li key={i}>
                 {r.sku} {r.name}: {r.change > 0 ? `+${r.change}` : r.change} -{`>`} balance {r.balance}
@@ -110,34 +119,42 @@ export default function StockInScreen() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search name, SKU, brand..."
-              className="w-full rounded border border-zinc-300 bg-white px-3 py-1.5 text-sm text-black dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
+              className={`w-full ${inputClass}`}
+              style={inputStyle}
             />
-            <button type="submit" className="rounded border border-zinc-300 px-3 py-1.5 text-sm dark:border-zinc-700">
+            <button
+              type="submit"
+              className="rounded border px-3 py-1.5 text-sm"
+              style={{ borderColor: theme.border, color: theme.textSecondary }}
+            >
               Search
             </button>
           </form>
-          <div className="max-h-96 overflow-y-auto rounded border border-zinc-200 dark:border-zinc-800">
+          <div className="max-h-96 overflow-y-auto rounded border" style={{ borderColor: theme.border }}>
             <table className="w-full text-left text-sm">
-              <thead className="bg-zinc-100 dark:bg-zinc-900">
+              <thead style={{ backgroundColor: theme.cardBgAlt, color: theme.textMuted }}>
                 <tr>
-                  <th className="px-3 py-2">SKU</th>
-                  <th className="px-3 py-2">Name</th>
-                  <th className="px-3 py-2 text-right">Stock</th>
-                  <th className="px-3 py-2 text-right">Reorder pt</th>
+                  <th className="px-3 py-2 font-normal">SKU</th>
+                  <th className="px-3 py-2 font-normal">Name</th>
+                  <th className="px-3 py-2 text-right font-normal">Stock</th>
+                  <th className="px-3 py-2 text-right font-normal">Reorder pt</th>
                   <th className="px-3 py-2"></th>
                 </tr>
               </thead>
               <tbody>
                 {results.map((p) => (
-                  <tr key={p.product_id} className="border-t border-zinc-200 dark:border-zinc-800">
-                    <td className="px-3 py-2 font-mono">{p.sku}</td>
+                  <tr key={p.product_id} className="border-t" style={{ borderColor: theme.border }}>
+                    <td className="px-3 py-2 font-mono" style={{ color: theme.textPrimary }}>
+                      {p.sku}
+                    </td>
                     <td className="px-3 py-2">{p.name}</td>
                     <td className="px-3 py-2 text-right">{p.stock_on_hand}</td>
                     <td className="px-3 py-2 text-right">{p.reorder_point}</td>
                     <td className="px-3 py-2 text-right">
                       <button
                         onClick={() => addToCart(p)}
-                        className="rounded bg-black px-2 py-1 text-xs text-white dark:bg-white dark:text-black"
+                        className="rounded px-2 py-1 text-xs font-medium"
+                        style={{ backgroundColor: theme.accent, color: "#05230f" }}
                       >
                         Add
                       </button>
@@ -146,7 +163,7 @@ export default function StockInScreen() {
                 ))}
                 {results.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="px-3 py-4 text-center text-zinc-500">
+                    <td colSpan={5} className="px-3 py-4 text-center" style={{ color: theme.textMuted }}>
                       No products found.
                     </td>
                   </tr>
@@ -158,25 +175,27 @@ export default function StockInScreen() {
 
         {/* Batch */}
         <div className="flex flex-col gap-3">
-          <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">
+          <h2 className="text-sm font-semibold" style={{ color: theme.textPrimary }}>
             This batch (+ received, - correction)
           </h2>
-          <div className="rounded border border-zinc-200 dark:border-zinc-800">
+          <div className="rounded border" style={{ borderColor: theme.border }}>
             <table className="w-full text-left text-sm">
-              <thead className="bg-zinc-100 dark:bg-zinc-900">
+              <thead style={{ backgroundColor: theme.cardBgAlt, color: theme.textMuted }}>
                 <tr>
-                  <th className="px-3 py-2">SKU</th>
-                  <th className="px-3 py-2">Name</th>
-                  <th className="px-3 py-2 text-right">Current</th>
-                  <th className="px-3 py-2 text-right">Qty change</th>
-                  <th className="px-3 py-2 text-right">New balance</th>
+                  <th className="px-3 py-2 font-normal">SKU</th>
+                  <th className="px-3 py-2 font-normal">Name</th>
+                  <th className="px-3 py-2 text-right font-normal">Current</th>
+                  <th className="px-3 py-2 text-right font-normal">Qty change</th>
+                  <th className="px-3 py-2 text-right font-normal">New balance</th>
                   <th className="px-3 py-2"></th>
                 </tr>
               </thead>
               <tbody>
                 {cart.map((l) => (
-                  <tr key={l.product_id} className="border-t border-zinc-200 dark:border-zinc-800">
-                    <td className="px-3 py-2 font-mono">{l.sku}</td>
+                  <tr key={l.product_id} className="border-t" style={{ borderColor: theme.border }}>
+                    <td className="px-3 py-2 font-mono" style={{ color: theme.textPrimary }}>
+                      {l.sku}
+                    </td>
                     <td className="px-3 py-2">{l.name}</td>
                     <td className="px-3 py-2 text-right">{l.stock_on_hand}</td>
                     <td className="px-3 py-2 text-right">
@@ -184,15 +203,13 @@ export default function StockInScreen() {
                         type="number"
                         value={l.qty}
                         onChange={(e) => setQty(l.product_id, e.target.value)}
-                        className="w-20 rounded border border-zinc-300 bg-white px-1 py-0.5 text-right dark:border-zinc-700 dark:bg-zinc-900"
+                        className="w-20 rounded border px-1 py-0.5 text-right"
+                        style={inputStyle}
                       />
                     </td>
                     <td className="px-3 py-2 text-right">{l.stock_on_hand + l.qty}</td>
                     <td className="px-3 py-2 text-right">
-                      <button
-                        onClick={() => removeFromCart(l.product_id)}
-                        className="text-red-600 hover:underline dark:text-red-400"
-                      >
+                      <button onClick={() => removeFromCart(l.product_id)} className="text-red-400 hover:underline">
                         Remove
                       </button>
                     </td>
@@ -200,7 +217,7 @@ export default function StockInScreen() {
                 ))}
                 {cart.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="px-3 py-4 text-center text-zinc-500">
+                    <td colSpan={6} className="px-3 py-4 text-center" style={{ color: theme.textMuted }}>
                       No lines yet - add products from the left.
                     </td>
                   </tr>
@@ -212,12 +229,14 @@ export default function StockInScreen() {
             value={reference}
             onChange={(e) => setReference(e.target.value)}
             placeholder="Reference (e.g. PO number, optional)"
-            className="rounded border border-zinc-300 bg-white px-3 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+            className={inputClass}
+            style={inputStyle}
           />
           <button
             onClick={handleConfirm}
             disabled={cart.length === 0 || confirming}
-            className="rounded bg-black px-4 py-2 text-sm text-white disabled:opacity-40 dark:bg-white dark:text-black"
+            className="rounded px-4 py-2 text-sm font-medium disabled:opacity-40"
+            style={{ backgroundColor: theme.accent, color: "#05230f" }}
           >
             {confirming ? "Recording..." : "Confirm"}
           </button>

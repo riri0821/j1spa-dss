@@ -20,10 +20,7 @@ const NAV = [
   },
   {
     section: "System",
-    items: [
-      { href: "/imports", label: "Data Import", key: "imports" },
-      { href: "/settings", label: "Settings", key: "settings" },
-    ],
+    items: [{ href: "/settings", label: "Settings", key: "settings" }],
   },
 ];
 
@@ -69,16 +66,16 @@ export default function Sidebar({ active = "dashboard", fullName, role }) {
         ))}
       </div>
 
-      <div className="flex items-center justify-between border-t pt-3" style={{ borderColor: theme.border }}>
-        <div>
-          <p className="text-sm" style={{ color: theme.textPrimary }}>
+      <div className="flex flex-col gap-2 border-t pt-3" style={{ borderColor: theme.border }}>
+        <div className="min-w-0">
+          <p className="truncate text-sm" style={{ color: theme.textPrimary }} title={fullName}>
             {fullName}
           </p>
           <p className="text-xs capitalize" style={{ color: theme.textMuted }}>
             {role}
           </p>
         </div>
-        <SignOutButton className="rounded border border-white/10 px-2 py-1 text-xs text-zinc-300 hover:bg-white/5" />
+        <SignOutButton className="w-full rounded border border-white/10 px-2 py-1.5 text-center text-xs text-zinc-300 hover:bg-white/5" />
       </div>
     </aside>
   );

@@ -1,7 +1,10 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import SignOutButton from "@/components/SignOutButton";
+import { theme } from "../dashboard/theme";
+import Sidebar from "../dashboard/Sidebar";
 import SalesScreen from "./SalesScreen";
+import ExportButton from "./ExportButton";
 
 export default async function SalesPage() {
   const supabase = await createClient();
@@ -17,27 +20,48 @@ export default async function SalesPage() {
     .eq("id", user.id)
     .single();
 
-  return (
-    <div className="flex min-h-screen flex-col gap-4 bg-zinc-50 p-8 font-sans dark:bg-black">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold text-black dark:text-zinc-50">Sales</h1>
+  const isOwner = profile?.role === "owner";
+
+  const body = (
+    <>
+      <div className="mb-6 flex items-start justify-between">
+        <div>
+          <h1 className="text-xl font-semibold" style={{ color: theme.textPrimary }}>
+            Sales
+          </h1>
+          <p className="text-sm" style={{ color: theme.textMuted }}>
+            Signed in as {profile?.full_name} - role: {profile?.role}. No unit cost or gross profit
+            is shown on this screen, matching the original app&apos;s staff restrictions.
+          </p>
+        </div>
         <div className="flex items-center gap-3">
-          {profile?.role === "owner" && (
-            <a href="/dashboard" className="text-sm text-zinc-600 hover:underline dark:text-zinc-400">
-              Back to dashboard
-            </a>
+          <ExportButton role={profile?.role} />
+          {!isOwner && (
+            <>
+              <a href="/stockin" className="text-sm hover:underline" style={{ color: theme.textSecondary }}>
+                Go to stock-in
+              </a>
+              <SignOutButton className="rounded border border-white/10 px-3 py-1.5 text-sm text-zinc-300 hover:bg-white/5" />
+            </>
           )}
-          <a href="/stockin" className="text-sm text-zinc-600 hover:underline dark:text-zinc-400">
-            Go to stock-in
-          </a>
-          <SignOutButton />
         </div>
       </div>
-      <p className="text-sm text-zinc-500 dark:text-zinc-500">
-        Signed in as {profile?.full_name} - role: {profile?.role}. No unit cost or gross profit
-        is shown on this screen, matching the original app&apos;s staff restrictions.
-      </p>
       <SalesScreen userId={user.id} role={profile?.role} />
+    </>
+  );
+
+  if (isOwner) {
+    return (
+      <div className="flex h-screen overflow-hidden font-sans" style={{ backgroundColor: theme.pageBg }}>
+        <Sidebar active="sales" fullName={profile.full_name} role={profile.role} />
+        <main className="flex-1 overflow-y-auto p-8">{body}</main>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen p-8 font-sans" style={{ backgroundColor: theme.pageBg }}>
+      {body}
     </div>
   );
 }

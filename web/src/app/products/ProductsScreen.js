@@ -2,6 +2,11 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { theme, CATEGORICAL } from "../dashboard/theme";
+
+const inputClass = "rounded border px-2 py-1.5 text-sm w-full";
+const inputStyle = { backgroundColor: theme.cardBgAlt, borderColor: theme.border, color: theme.textPrimary };
+const PAGE_SIZE = 20;
 
 const emptyForm = {
   product_id: null,
@@ -9,7 +14,6 @@ const emptyForm = {
   name: "",
   category: "",
   brand: "",
-  supplier: "",
   unit_cost: "",
   unit_price: "",
   reorder_point: "",
@@ -26,6 +30,7 @@ export default function ProductsScreen() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [form, setForm] = useState(null); // null = form closed
+  const [page, setPage] = useState(1);
 
   const loadProducts = useCallback(
     async (term) => {
@@ -35,7 +40,7 @@ export default function ProductsScreen() {
       let query = supabase
         .from("products")
         .select(
-          "product_id, sku, name, category, brand, supplier, unit_cost, unit_price, reorder_point, stock_on_hand, is_active"
+          "product_id, sku, name, category, brand, unit_cost, unit_price, reorder_point, stock_on_hand, is_active"
         )
         .order("name")
         .limit(500);
@@ -70,8 +75,15 @@ export default function ProductsScreen() {
 
   function handleSearchSubmit(e) {
     e.preventDefault();
+    setPage(1);
     loadProducts(search);
   }
+
+  const totalPages = Math.max(1, Math.ceil(products.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const paginated = products.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+  const rangeStart = products.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1;
+  const rangeEnd = Math.min(currentPage * PAGE_SIZE, products.length);
 
   function openCreate() {
     setForm({ ...emptyForm });
@@ -85,7 +97,6 @@ export default function ProductsScreen() {
       name: p.name,
       category: p.category,
       brand: p.brand,
-      supplier: p.supplier,
       unit_cost: String(p.unit_cost),
       unit_price: String(p.unit_price),
       reorder_point: String(p.reorder_point),
@@ -131,32 +142,35 @@ export default function ProductsScreen() {
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4" style={{ color: theme.textSecondary }}>
       <div className="flex items-center justify-between gap-4">
         <form onSubmit={handleSearchSubmit} className="flex gap-2">
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search name, SKU, brand, category..."
-            className="w-72 rounded border border-zinc-300 bg-white px-3 py-1.5 text-sm text-black dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
+            className="w-72 rounded border px-3 py-1.5 text-sm"
+            style={inputStyle}
           />
           <button
             type="submit"
-            className="rounded border border-zinc-300 px-3 py-1.5 text-sm dark:border-zinc-700"
+            className="rounded border px-3 py-1.5 text-sm"
+            style={{ borderColor: theme.border, color: theme.textSecondary }}
           >
             Search
           </button>
         </form>
         <button
           onClick={openCreate}
-          className="rounded bg-black px-4 py-1.5 text-sm text-white dark:bg-white dark:text-black"
+          className="rounded px-4 py-1.5 text-sm font-medium"
+          style={{ backgroundColor: theme.accent, color: "#05230f" }}
         >
           + Add product
         </button>
       </div>
 
-      {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
-      {notice && <p className="text-sm text-green-700 dark:text-green-400">{notice}</p>}
+      {error && <p className="text-sm text-red-400">{error}</p>}
+      {notice && <p className="text-sm text-green-400">{notice}</p>}
 
       {form && (
         <ProductForm
@@ -168,39 +182,41 @@ export default function ProductsScreen() {
         />
       )}
 
-      <div className="overflow-x-auto rounded border border-zinc-200 dark:border-zinc-800">
+      <div className="overflow-x-auto rounded border" style={{ borderColor: theme.border }}>
         <table className="w-full text-left text-sm">
-          <thead className="bg-zinc-100 dark:bg-zinc-900">
+          <thead style={{ backgroundColor: theme.cardBgAlt, color: theme.textMuted }}>
             <tr>
-              <th className="px-3 py-2">SKU</th>
-              <th className="px-3 py-2">Name</th>
-              <th className="px-3 py-2">Category</th>
-              <th className="px-3 py-2">Brand</th>
-              <th className="px-3 py-2 text-right">Cost</th>
-              <th className="px-3 py-2 text-right">Price</th>
-              <th className="px-3 py-2 text-right">Stock</th>
-              <th className="px-3 py-2 text-right">Reorder pt</th>
-              <th className="px-3 py-2">Active</th>
+              <th className="px-3 py-2 font-normal">SKU</th>
+              <th className="px-3 py-2 font-normal">Name</th>
+              <th className="px-3 py-2 font-normal">Category</th>
+              <th className="px-3 py-2 font-normal">Brand</th>
+              <th className="px-3 py-2 text-right font-normal">Cost</th>
+              <th className="px-3 py-2 text-right font-normal">Price</th>
+              <th className="px-3 py-2 text-right font-normal">Stock</th>
+              <th className="px-3 py-2 text-right font-normal">Reorder pt</th>
+              <th className="px-3 py-2 font-normal">Active</th>
               <th className="px-3 py-2"></th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={10} className="px-3 py-4 text-center text-zinc-500">
+                <td colSpan={10} className="px-3 py-4 text-center" style={{ color: theme.textMuted }}>
                   Loading...
                 </td>
               </tr>
             ) : products.length === 0 ? (
               <tr>
-                <td colSpan={10} className="px-3 py-4 text-center text-zinc-500">
+                <td colSpan={10} className="px-3 py-4 text-center" style={{ color: theme.textMuted }}>
                   No products found.
                 </td>
               </tr>
             ) : (
-              products.map((p) => (
-                <tr key={p.product_id} className="border-t border-zinc-200 dark:border-zinc-800">
-                  <td className="px-3 py-2 font-mono">{p.sku}</td>
+              paginated.map((p) => (
+                <tr key={p.product_id} className="border-t" style={{ borderColor: theme.border }}>
+                  <td className="px-3 py-2 font-mono" style={{ color: theme.textPrimary }}>
+                    {p.sku}
+                  </td>
                   <td className="px-3 py-2">{p.name}</td>
                   <td className="px-3 py-2">{p.category}</td>
                   <td className="px-3 py-2">{p.brand}</td>
@@ -210,16 +226,10 @@ export default function ProductsScreen() {
                   <td className="px-3 py-2 text-right">{p.reorder_point}</td>
                   <td className="px-3 py-2">{p.is_active ? "yes" : "no"}</td>
                   <td className="px-3 py-2 text-right">
-                    <button
-                      onClick={() => openEdit(p)}
-                      className="mr-2 text-blue-600 hover:underline dark:text-blue-400"
-                    >
+                    <button onClick={() => openEdit(p)} className="mr-2 hover:underline" style={{ color: CATEGORICAL[0] }}>
                       Edit
                     </button>
-                    <button
-                      onClick={() => handleDelete(p.product_id)}
-                      className="text-red-600 hover:underline dark:text-red-400"
-                    >
+                    <button onClick={() => handleDelete(p.product_id)} className="text-red-400 hover:underline">
                       Delete
                     </button>
                   </td>
@@ -229,6 +239,35 @@ export default function ProductsScreen() {
           </tbody>
         </table>
       </div>
+
+      {products.length > 0 && (
+        <div className="flex items-center justify-between text-xs" style={{ color: theme.textMuted }}>
+          <span>
+            Showing {rangeStart}-{rangeEnd} of {products.length}
+          </span>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setPage(Math.max(1, currentPage - 1))}
+              disabled={currentPage === 1}
+              className="rounded border px-2 py-1 disabled:cursor-not-allowed disabled:opacity-40"
+              style={{ borderColor: theme.border, color: theme.textSecondary }}
+            >
+              Prev
+            </button>
+            <span>
+              Page {currentPage} of {totalPages}
+            </span>
+            <button
+              onClick={() => setPage(Math.min(totalPages, currentPage + 1))}
+              disabled={currentPage === totalPages}
+              className="rounded border px-2 py-1 disabled:cursor-not-allowed disabled:opacity-40"
+              style={{ borderColor: theme.border, color: theme.textSecondary }}
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -241,7 +280,8 @@ function ProductForm({ form, setForm, categories, onSave, onCancel }) {
   return (
     <form
       onSubmit={onSave}
-      className="grid grid-cols-2 gap-3 rounded border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950 sm:grid-cols-4"
+      className="grid grid-cols-2 gap-3 rounded border p-4 sm:grid-cols-4"
+      style={{ borderColor: theme.border, backgroundColor: theme.cardBg }}
     >
       <Field label="SKU">
         <input
@@ -249,18 +289,20 @@ function ProductForm({ form, setForm, categories, onSave, onCancel }) {
           disabled={!!form.product_id}
           value={form.sku}
           onChange={(e) => set("sku", e.target.value)}
-          className="rounded border border-zinc-300 bg-white px-2 py-1.5 text-sm text-black dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50 w-full"
+          className={inputClass}
+          style={inputStyle}
         />
       </Field>
       <Field label="Name">
-        <input required value={form.name} onChange={(e) => set("name", e.target.value)} className="rounded border border-zinc-300 bg-white px-2 py-1.5 text-sm text-black dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50 w-full" />
+        <input required value={form.name} onChange={(e) => set("name", e.target.value)} className={inputClass} style={inputStyle} />
       </Field>
       <Field label="Category">
         <input
           list="category-options"
           value={form.category}
           onChange={(e) => set("category", e.target.value)}
-          className="rounded border border-zinc-300 bg-white px-2 py-1.5 text-sm text-black dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50 w-full"
+          className={inputClass}
+          style={inputStyle}
         />
         <datalist id="category-options">
           {categories.map((c) => (
@@ -269,10 +311,7 @@ function ProductForm({ form, setForm, categories, onSave, onCancel }) {
         </datalist>
       </Field>
       <Field label="Brand">
-        <input value={form.brand} onChange={(e) => set("brand", e.target.value)} className="rounded border border-zinc-300 bg-white px-2 py-1.5 text-sm text-black dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50 w-full" />
-      </Field>
-      <Field label="Supplier">
-        <input value={form.supplier} onChange={(e) => set("supplier", e.target.value)} className="rounded border border-zinc-300 bg-white px-2 py-1.5 text-sm text-black dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50 w-full" />
+        <input value={form.brand} onChange={(e) => set("brand", e.target.value)} className={inputClass} style={inputStyle} />
       </Field>
       <Field label="Unit cost">
         <input
@@ -280,7 +319,8 @@ function ProductForm({ form, setForm, categories, onSave, onCancel }) {
           step="0.01"
           value={form.unit_cost}
           onChange={(e) => set("unit_cost", e.target.value)}
-          className="rounded border border-zinc-300 bg-white px-2 py-1.5 text-sm text-black dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50 w-full"
+          className={inputClass}
+          style={inputStyle}
         />
       </Field>
       <Field label="Unit price">
@@ -289,7 +329,8 @@ function ProductForm({ form, setForm, categories, onSave, onCancel }) {
           step="0.01"
           value={form.unit_price}
           onChange={(e) => set("unit_price", e.target.value)}
-          className="rounded border border-zinc-300 bg-white px-2 py-1.5 text-sm text-black dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50 w-full"
+          className={inputClass}
+          style={inputStyle}
         />
       </Field>
       <Field label="Reorder point">
@@ -297,7 +338,8 @@ function ProductForm({ form, setForm, categories, onSave, onCancel }) {
           type="number"
           value={form.reorder_point}
           onChange={(e) => set("reorder_point", e.target.value)}
-          className="rounded border border-zinc-300 bg-white px-2 py-1.5 text-sm text-black dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50 w-full"
+          className={inputClass}
+          style={inputStyle}
         />
       </Field>
       {!form.product_id && (
@@ -306,23 +348,39 @@ function ProductForm({ form, setForm, categories, onSave, onCancel }) {
             type="number"
             value={form.opening_stock}
             onChange={(e) => set("opening_stock", e.target.value)}
-            className="rounded border border-zinc-300 bg-white px-2 py-1.5 text-sm text-black dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50 w-full"
+            className={inputClass}
+            style={inputStyle}
           />
         </Field>
       )}
-      <Field label="Active">
-        <input
-          type="checkbox"
-          checked={form.is_active}
-          onChange={(e) => set("is_active", e.target.checked)}
-        />
-      </Field>
+      <label className="flex flex-col gap-1 text-xs" style={{ color: theme.textMuted }}>
+        &nbsp;
+        <span className="flex h-[34px] items-center gap-2 text-sm" style={{ color: theme.textSecondary }}>
+          Active
+          <input
+            type="checkbox"
+            checked={form.is_active}
+            onChange={(e) => set("is_active", e.target.checked)}
+            className="h-4 w-4 rounded"
+            style={{ accentColor: theme.accent }}
+          />
+        </span>
+      </label>
 
       <div className="col-span-full flex gap-2">
-        <button type="submit" className="rounded bg-black px-4 py-1.5 text-sm text-white dark:bg-white dark:text-black">
+        <button
+          type="submit"
+          className="rounded px-4 py-1.5 text-sm font-medium"
+          style={{ backgroundColor: theme.accent, color: "#05230f" }}
+        >
           Save
         </button>
-        <button type="button" onClick={onCancel} className="rounded border border-zinc-300 px-4 py-1.5 text-sm dark:border-zinc-700">
+        <button
+          type="button"
+          onClick={onCancel}
+          className="rounded border px-4 py-1.5 text-sm"
+          style={{ borderColor: theme.border, color: theme.textSecondary }}
+        >
           Cancel
         </button>
       </div>
@@ -332,7 +390,7 @@ function ProductForm({ form, setForm, categories, onSave, onCancel }) {
 
 function Field({ label, children }) {
   return (
-    <label className="flex flex-col gap-1 text-xs text-zinc-600 dark:text-zinc-400">
+    <label className="flex flex-col gap-1 text-xs" style={{ color: theme.textMuted }}>
       {label}
       {children}
     </label>

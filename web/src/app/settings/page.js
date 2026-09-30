@@ -22,7 +22,7 @@ export default async function SettingsPage() {
     .order("username");
 
   return (
-    <div className="flex min-h-screen font-sans" style={{ backgroundColor: theme.pageBg }}>
+    <div className="flex h-screen overflow-hidden font-sans" style={{ backgroundColor: theme.pageBg }}>
       <Sidebar active="settings" fullName={profile.full_name} role={profile.role} />
 
       <main className="flex-1 overflow-y-auto p-8">

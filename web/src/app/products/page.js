@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import SignOutButton from "@/components/SignOutButton";
+import { theme } from "../dashboard/theme";
+import Sidebar from "../dashboard/Sidebar";
 import ProductsScreen from "./ProductsScreen";
 
 export default async function ProductsPage() {
@@ -13,24 +14,21 @@ export default async function ProductsPage() {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("role")
+    .select("role, full_name")
     .eq("id", user.id)
     .single();
 
   if (profile?.role !== "owner") redirect("/sales");
 
   return (
-    <div className="flex min-h-screen flex-col gap-4 bg-zinc-50 p-8 font-sans dark:bg-black">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold text-black dark:text-zinc-50">Products</h1>
-        <div className="flex items-center gap-3">
-          <a href="/dashboard" className="text-sm text-zinc-600 hover:underline dark:text-zinc-400">
-            Back to dashboard
-          </a>
-          <SignOutButton />
-        </div>
-      </div>
-      <ProductsScreen />
+    <div className="flex h-screen overflow-hidden font-sans" style={{ backgroundColor: theme.pageBg }}>
+      <Sidebar active="products" fullName={profile.full_name} role={profile.role} />
+      <main className="flex-1 overflow-y-auto p-8">
+        <h1 className="mb-6 text-xl font-semibold" style={{ color: theme.textPrimary }}>
+          Products
+        </h1>
+        <ProductsScreen />
+      </main>
     </div>
   );
 }

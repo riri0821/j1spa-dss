@@ -7,7 +7,7 @@ import { theme } from "../dashboard/theme";
 
 export default function SettingsScreen({ currentUserId, currentEmail, initialUsers }) {
   return (
-    <div className="flex flex-col gap-8">
+    <div className="grid items-start gap-6 lg:grid-cols-2">
       <ChangePasswordCard currentEmail={currentEmail} />
       <StaffCard currentUserId={currentUserId} users={initialUsers} />
     </div>
@@ -16,10 +16,7 @@ export default function SettingsScreen({ currentUserId, currentEmail, initialUse
 
 function Card({ title, children }) {
   return (
-    <section
-      className="max-w-xl rounded-lg border p-4"
-      style={{ backgroundColor: theme.cardBg, borderColor: theme.border }}
-    >
+    <section className="rounded-lg border p-4" style={{ backgroundColor: theme.cardBg, borderColor: theme.border }}>
       <h2 className="mb-3 text-sm font-semibold" style={{ color: theme.textPrimary }}>
         {title}
       </h2>
