@@ -48,9 +48,15 @@ export default async function DashboardPage() {
         >
           Stock-in
         </a>
+        <a
+          href="/forecasting"
+          className="w-fit rounded border border-zinc-300 px-4 py-2 text-sm text-black hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-50 dark:hover:bg-zinc-900"
+        >
+          Forecasting
+        </a>
       </div>
       <p className="text-sm text-zinc-500 dark:text-zinc-500">
-        Placeholder - analytics/forecasting screens land in later phases.
+        Placeholder - the analytics dashboard lands in a later phase.
       </p>
     </div>
   );

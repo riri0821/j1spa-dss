@@ -1,0 +1,12 @@
+fastapi==0.121.2
+uvicorn[standard]==0.38.0
+supabase==2.31.0
+python-dotenv==1.2.3
+# numpy/pandas/scipy/scikit-learn/statsmodels versions match the main
+# app's requirements.txt - already verified to have Windows wheels for
+# the Python version this project runs.
+numpy==2.5.2
+pandas==3.0.5
+scipy==1.18.1
+scikit-learn==1.9.0
+statsmodels==0.15.0

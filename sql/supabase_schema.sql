@@ -38,6 +38,7 @@ drop function if exists set_updated_at() cascade;
 drop function if exists confirm_sale(jsonb, text) cascade;
 drop function if exists undo_sale(bigint) cascade;
 drop function if exists record_stock_movements(jsonb, text) cascade;
+drop function if exists monthly_demand(text) cascade;
 
 drop type if exists user_role;
 drop type if exists sale_status;
@@ -577,3 +578,26 @@ $$;
 
 revoke execute on function record_stock_movements(jsonb, text) from public;
 grant execute on function record_stock_movements(jsonb, text) to authenticated;
+
+-- Read-only, no security definer needed: authenticated already has SELECT
+-- on sale_items/sales/products via the RLS policies above, and the
+-- forecasting service calls this with the service_role key, which
+-- bypasses RLS entirely regardless.
+create or replace function monthly_demand(p_sku text)
+returns table(year int, month int, units numeric)
+language sql
+stable
+as $$
+  select
+    extract(year from s.sale_ts)::int as year,
+    extract(month from s.sale_ts)::int as month,
+    sum(si.quantity)::numeric as units
+  from sale_items si
+  join sales s    on s.sale_id = si.sale_id
+  join products p on p.product_id = si.product_id
+  where p.sku = p_sku and s.status = 'confirmed'
+  group by year, month
+  order by year, month;
+$$;
+
+grant execute on function monthly_demand(text) to authenticated, service_role;
