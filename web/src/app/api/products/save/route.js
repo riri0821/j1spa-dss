@@ -1,0 +1,79 @@
+import { NextResponse } from "next/server";
+import { createClient } from "@/lib/supabase/server";
+
+export async function POST(request) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ error: "Not signed in." }, { status: 401 });
+  }
+
+  const body = await request.json();
+  const sku = (body.sku ?? "").trim().toUpperCase();
+  const name = (body.name ?? "").trim();
+  if (!sku || !name) {
+    return NextResponse.json({ error: "SKU and name are required." }, { status: 400 });
+  }
+
+  const values = {
+    sku,
+    name,
+    category: (body.category ?? "").trim() || "Uncategorized",
+    brand: (body.brand ?? "").trim() || "Generic",
+    supplier: (body.supplier ?? "").trim() || "Unknown",
+    unit_cost: Number(body.unit_cost) || 0,
+    unit_price: Number(body.unit_price) || 0,
+    reorder_point: Number(body.reorder_point) || 0,
+    is_active: !!body.is_active,
+  };
+
+  if (body.product_id) {
+    // Update. vehicle_compat is deliberately left out here, same as the
+    // original app - it has no field in this form, so including it would
+    // null out any existing value (e.g. from historical import) on save.
+    const { error } = await supabase
+      .from("products")
+      .update(values)
+      .eq("product_id", body.product_id);
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+    return NextResponse.json({ ok: true, product_id: body.product_id, mode: "updated" });
+  }
+
+  const { data: dup } = await supabase.from("products").select("product_id").eq("sku", sku);
+  if (dup && dup.length > 0) {
+    return NextResponse.json({ error: `SKU ${sku} already exists.` }, { status: 409 });
+  }
+
+  const openingStock = Number(body.opening_stock) || 0;
+  const { data: created, error: insertError } = await supabase
+    .from("products")
+    .insert({ ...values, stock_on_hand: openingStock, source_type: "Direct Sales Entry" })
+    .select("product_id")
+    .single();
+
+  if (insertError) return NextResponse.json({ error: insertError.message }, { status: 400 });
+
+  if (openingStock) {
+    const { error: movementError } = await supabase.from("stock_movements").insert({
+      product_id: created.product_id,
+      sku,
+      movement_type: "adjustment",
+      quantity: openingStock,
+      balance_after: openingStock,
+      user_id: user.id,
+      reference: "opening",
+      note: "opening stock",
+    });
+    if (movementError) {
+      return NextResponse.json(
+        { error: `Product created, but opening stock movement failed: ${movementError.message}` },
+        { status: 400 }
+      );
+    }
+  }
+
+  return NextResponse.json({ ok: true, product_id: created.product_id, mode: "created" });
+}
