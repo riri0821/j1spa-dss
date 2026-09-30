@@ -1,7 +1,8 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import SignOutButton from "@/components/SignOutButton";
-import ForecastLookup from "./ForecastLookup";
+import { theme } from "../dashboard/theme";
+import Sidebar from "../dashboard/Sidebar";
+import ForecastWorkspace from "./ForecastWorkspace";
 
 export default async function ForecastingPage() {
   const supabase = await createClient();
@@ -11,21 +12,27 @@ export default async function ForecastingPage() {
 
   if (!user) redirect("/login");
 
-  const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single();
+  const { data: profile } = await supabase.from("profiles").select("role, full_name").eq("id", user.id).single();
   if (profile?.role !== "owner") redirect("/sales");
 
+  const { data: products } = await supabase
+    .from("products")
+    .select("sku, name")
+    .eq("is_active", true)
+    .order("name");
+
   return (
-    <div className="flex min-h-screen flex-col gap-4 bg-zinc-50 p-8 font-sans dark:bg-black">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold text-black dark:text-zinc-50">Forecasting</h1>
-        <div className="flex items-center gap-3">
-          <a href="/dashboard" className="text-sm text-zinc-600 hover:underline dark:text-zinc-400">
-            Back to dashboard
-          </a>
-          <SignOutButton />
-        </div>
-      </div>
-      <ForecastLookup />
+    <div className="flex min-h-screen font-sans" style={{ backgroundColor: theme.pageBg }}>
+      <Sidebar active="forecasting" fullName={profile.full_name} role={profile.role} />
+      <main className="flex-1 overflow-y-auto p-8">
+        <h1 className="text-xl font-semibold" style={{ color: theme.textPrimary }}>
+          Time-Series Demand Forecasting Workspace
+        </h1>
+        <p className="mb-6 text-sm" style={{ color: theme.textMuted }}>
+          Compare five forecasting models per item over a chosen horizon.
+        </p>
+        <ForecastWorkspace products={products ?? []} />
+      </main>
     </div>
   );
 }

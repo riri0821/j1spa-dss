@@ -19,9 +19,11 @@ export async function GET(request, { params }) {
 
   const { sku } = await params;
   const horizon = request.nextUrl.searchParams.get("horizon");
+  const models = request.nextUrl.searchParams.get("models");
 
   const url = new URL(`/forecast/${encodeURIComponent(sku)}`, process.env.FORECAST_SERVICE_URL);
   if (horizon) url.searchParams.set("horizon", horizon);
+  if (models) url.searchParams.set("models", models);
 
   let upstream;
   try {
