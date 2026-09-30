@@ -58,8 +58,8 @@ export default function BestSellingChart({ data }) {
   }
 
   return (
-    <ResponsiveContainer width="100%" height={220}>
-      <BarChart data={data} margin={{ top: 20, right: 8, left: 0, bottom: 8 }}>
+    <ResponsiveContainer width="100%" height={240}>
+      <BarChart data={data} margin={{ top: 32, right: 8, left: 0, bottom: 8 }}>
         <CartesianGrid vertical={false} stroke={theme.border} />
         <XAxis
           dataKey="name"
@@ -69,7 +69,13 @@ export default function BestSellingChart({ data }) {
           interval={0}
           height={30}
         />
-        <YAxis tick={{ fill: theme.textMuted, fontSize: 11 }} tickLine={false} axisLine={false} width={30} />
+        <YAxis
+          tick={{ fill: theme.textMuted, fontSize: 11 }}
+          tickLine={false}
+          axisLine={false}
+          width={30}
+          domain={[0, (max) => Math.ceil((max * 1.25) / 10) * 10]}
+        />
         <Tooltip cursor={{ fill: "rgba(255,255,255,0.04)" }} content={<CustomTooltip />} />
         <Bar dataKey="units90d" fill={CATEGORICAL[0]} radius={[4, 4, 0, 0]} maxBarSize={40}>
           <LabelList dataKey="units90d" position="top" fill={theme.textSecondary} fontSize={11} />
