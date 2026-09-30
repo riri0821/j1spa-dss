@@ -18,6 +18,10 @@ const NAV = [
       { href: "/products", label: "Products", key: "products" },
     ],
   },
+  {
+    section: "System",
+    items: [{ href: "/settings", label: "Settings", key: "settings" }],
+  },
 ];
 
 export default function Sidebar({ active = "dashboard", fullName, role }) {

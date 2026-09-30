@@ -38,6 +38,21 @@ export async function proxy(request) {
     return NextResponse.redirect(url);
   }
 
+  // A deactivated account (Settings -> Deactivate) still has a valid
+  // Supabase session - Supabase Auth doesn't know about our own
+  // profiles.is_active flag, so this needs an explicit check on every
+  // request to actually kick them out, not just block future logins.
+  if (user && !isPublicPath) {
+    const { data: profile } = await supabase.from("profiles").select("is_active").eq("id", user.id).single();
+    if (profile && !profile.is_active) {
+      await supabase.auth.signOut();
+      const url = request.nextUrl.clone();
+      url.pathname = "/login";
+      url.searchParams.set("deactivated", "1");
+      return NextResponse.redirect(url);
+    }
+  }
+
   return response;
 }
 

@@ -148,7 +148,9 @@ create trigger trg_products_updated_at
 create table sales (
   sale_id       bigint generated always as identity primary key,
   sale_ts       timestamptz not null default now(),
-  user_id       uuid not null references profiles (id),
+  -- nullable: a deleted staff account's old sales get reassigned to null
+  -- (read as "Former staff" in the UI) rather than blocked from deletion
+  user_id       uuid references profiles (id),
   user_role     user_role not null,
   total_amount  numeric(14,2) not null default 0,
   total_cost    numeric(14,2) not null default 0,
@@ -183,7 +185,7 @@ create table stock_movements (
   movement_type movement_type not null,
   quantity      integer not null,
   balance_after integer not null,
-  user_id       uuid not null references profiles (id),
+  user_id       uuid references profiles (id),
   reference     varchar(80),
   note          varchar(255)
 );
@@ -336,6 +338,9 @@ create policy "stock_movements_select" on stock_movements for select
   using (auth.role() = 'authenticated');
 create policy "stock_movements_insert" on stock_movements for insert
   with check (auth.role() = 'authenticated');
+-- owners can reassign user_id when deleting a staff account
+create policy "stock_movements_owner_write" on stock_movements for update
+  using (current_user_role() = 'owner');
 
 -- alerts: read-only for everyone signed in; written by the owner-triggered
 -- rules engine (Decision Support screen).
@@ -481,7 +486,7 @@ begin
 
   -- staff may undo only their own sale on the same day; owner may undo any
   if v_role <> 'owner' and (
-    v_sale.user_id <> v_uid or v_sale.sale_ts::date <> current_date
+    v_sale.user_id is distinct from v_uid or v_sale.sale_ts::date <> current_date
   ) then
     raise exception 'Not allowed to undo this sale.';
   end if;

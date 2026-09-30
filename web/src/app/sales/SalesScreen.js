@@ -311,7 +311,7 @@ export default function SalesScreen({ userId, role }) {
                       </button>
                     </td>
                     <td className="px-3 py-2">{new Date(s.sale_ts).toLocaleString()}</td>
-                    <td className="px-3 py-2">{s.profiles?.full_name}</td>
+                    <td className="px-3 py-2">{s.profiles?.full_name ?? "Former staff"}</td>
                     <td className="px-3 py-2 text-right">{s.lines}</td>
                     <td className="px-3 py-2 text-right">{Number(s.total_amount).toFixed(2)}</td>
                     <td className="px-3 py-2">{s.note}</td>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
@@ -11,6 +11,13 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("deactivated")) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setError("This account has been deactivated. Contact the owner.");
+    }
+  }, []);
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -30,12 +37,19 @@ export default function LoginPage() {
 
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
-      .select("role")
+      .select("role, is_active")
       .eq("id", data.user.id)
       .single();
 
     if (profileError) {
       setError("Signed in, but no profile row was found for this account.");
+      setLoading(false);
+      return;
+    }
+
+    if (!profile.is_active) {
+      await supabase.auth.signOut();
+      setError("This account has been deactivated. Contact the owner.");
       setLoading(false);
       return;
     }
