@@ -268,10 +268,18 @@ select
   coalesce(sum(si.line_revenue), 0)                 as revenue_90d,
   coalesce(sum(si.line_revenue - si.line_cost), 0)  as gross_profit_90d
 from products p
-left join sale_items si on si.product_id = p.product_id
-left join sales s        on s.sale_id = si.sale_id
-     and s.status = 'confirmed'
-     and s.sale_ts >= now() - interval '90 days'
+-- sale_items is pre-filtered to qualifying sales *before* the join to
+-- products, not after - joining sale_items to products first and only
+-- then filtering sales.status in the second join's ON clause (the
+-- original version of this view) left a voided/old sale's line items
+-- attached to the product regardless, since sale_items itself was never
+-- excluded.
+left join (
+  select si.*
+  from sale_items si
+  join sales s on s.sale_id = si.sale_id
+  where s.status = 'confirmed' and s.sale_ts >= now() - interval '90 days'
+) si on si.product_id = p.product_id
 group by p.sku, p.name, p.category;
 
 -- =====================================================================
