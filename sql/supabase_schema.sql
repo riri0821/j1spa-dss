@@ -39,6 +39,7 @@ drop function if exists confirm_sale(jsonb, text) cascade;
 drop function if exists undo_sale(bigint) cascade;
 drop function if exists record_stock_movements(jsonb, text) cascade;
 drop function if exists monthly_demand(text) cascade;
+drop function if exists monthly_demand_all() cascade;
 
 drop type if exists user_role;
 drop type if exists sale_status;
@@ -617,3 +618,25 @@ as $$
 $$;
 
 grant execute on function monthly_demand(text) to authenticated, service_role;
+
+-- Same idea as monthly_demand(), but for every SKU in one query - used by
+-- Decision Support, which otherwise needed one round trip per product.
+create or replace function monthly_demand_all()
+returns table(sku text, year int, month int, units numeric)
+language sql
+stable
+as $$
+  select
+    p.sku,
+    extract(year from s.sale_ts)::int as year,
+    extract(month from s.sale_ts)::int as month,
+    sum(si.quantity)::numeric as units
+  from sale_items si
+  join sales s    on s.sale_id = si.sale_id
+  join products p on p.product_id = si.product_id
+  where s.status = 'confirmed'
+  group by p.sku, year, month
+  order by p.sku, year, month;
+$$;
+
+grant execute on function monthly_demand_all() to authenticated, service_role;

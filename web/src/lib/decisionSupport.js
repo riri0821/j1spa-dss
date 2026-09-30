@@ -83,22 +83,28 @@ function makeAdvisory(product, type, severity, title, message, recommendation, f
 }
 
 export async function evaluateDecisionSupport(supabase) {
-  const [{ data: velocityRows }, { data: products }] = await Promise.all([
+  const [{ data: velocityRows }, { data: products }, { data: monthlyRows }] = await Promise.all([
     supabase.from("vw_product_velocity").select("sku, units_90d"),
     supabase.from("products").select("product_id, sku, name, stock_on_hand, reorder_point").eq("is_active", true),
+    // one query for every SKU's monthly demand, instead of one round trip
+    // per product (576 separate calls against the real catalog - fine for
+    // a handful of test products, not fine at real scale)
+    supabase.rpc("monthly_demand_all"),
   ]);
 
   const velocityMap = new Map((velocityRows ?? []).map((r) => [r.sku, Number(r.units_90d) || 0]));
   const nonZero = [...velocityMap.values()].filter((v) => v > 0);
   const velocityMedian = median(nonZero);
 
+  const rowsBySku = new Map();
+  for (const r of monthlyRows ?? []) {
+    if (!rowsBySku.has(r.sku)) rowsBySku.set(r.sku, []);
+    rowsBySku.get(r.sku).push(r);
+  }
   const monthlyBySku = new Map();
-  await Promise.all(
-    (products ?? []).map(async (p) => {
-      const { data } = await supabase.rpc("monthly_demand", { p_sku: p.sku });
-      monthlyBySku.set(p.sku, gapFilledUnits(data ?? []));
-    })
-  );
+  for (const p of products ?? []) {
+    monthlyBySku.set(p.sku, gapFilledUnits(rowsBySku.get(p.sku) ?? []));
+  }
 
   const advisories = [];
   for (const p of products ?? []) {
