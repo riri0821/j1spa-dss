@@ -1,21 +1,24 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 
 export default function ForecastLookup() {
-  const [sku, setSku] = useState("");
+  const searchParams = useSearchParams();
+  const initialSku = searchParams.get("sku") ?? "";
+
+  const [sku, setSku] = useState(initialSku);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState(null);
 
-  async function handleSubmit(e) {
-    e.preventDefault();
-    if (!sku.trim()) return;
+  async function runForecast(value) {
+    if (!value.trim()) return;
     setLoading(true);
     setError("");
     setResult(null);
 
-    const res = await fetch(`/api/forecast/${encodeURIComponent(sku.trim())}`);
+    const res = await fetch(`/api/forecast/${encodeURIComponent(value.trim())}`);
     const body = await res.json();
     setLoading(false);
 
@@ -24,6 +27,21 @@ export default function ForecastLookup() {
       return;
     }
     setResult(body);
+  }
+
+  useEffect(() => {
+    // Deep link from the dashboard's tracking table (?sku=...) - forecast
+    // immediately instead of making the owner retype it.
+    if (initialSku) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      runForecast(initialSku);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function handleSubmit(e) {
+    e.preventDefault();
+    runForecast(sku);
   }
 
   return (

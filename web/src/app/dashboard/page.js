@@ -1,10 +1,14 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { getKpis, getProductPerformance, getSalesHeatmap } from "@/lib/analytics";
-import SignOutButton from "@/components/SignOutButton";
+import { getKpis, getProductPerformance, getSalesHeatmap, summarizeDashboard } from "@/lib/analytics";
+import { theme } from "./theme";
+import Sidebar from "./Sidebar";
+import RefreshButton from "./RefreshButton";
 import StatTile from "./StatTile";
-import PerformanceTable from "./PerformanceTable";
 import SalesHeatmap from "./SalesHeatmap";
+import BestSellingChart from "./BestSellingChart";
+import StockByCategoryChart from "./StockByCategoryChart";
+import TrackingTable from "./TrackingTable";
 
 export default async function DashboardPage() {
   const supabase = await createClient();
@@ -27,62 +31,103 @@ export default async function DashboardPage() {
     getProductPerformance(supabase),
     getSalesHeatmap(supabase),
   ]);
+  const summary = summarizeDashboard(performance);
 
   return (
-    <div className="flex min-h-screen flex-col gap-6 bg-zinc-50 p-8 font-sans dark:bg-black">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold text-black dark:text-zinc-50">Owner Dashboard</h1>
-        <div className="flex items-center gap-3">
-          <p className="text-sm text-zinc-500">{profile.full_name}</p>
-          <SignOutButton />
+    <div className="flex min-h-screen font-sans" style={{ backgroundColor: theme.pageBg }}>
+      <Sidebar active="dashboard" fullName={profile.full_name} role={profile.role} />
+
+      <main className="flex-1 overflow-y-auto p-8">
+        <div className="mb-6 flex items-start justify-between">
+          <div>
+            <h1 className="text-xl font-semibold" style={{ color: theme.textPrimary }}>
+              Business Analytics &amp; Sales Intelligence
+            </h1>
+            <p className="text-sm" style={{ color: theme.textMuted }}>
+              {profile.full_name} · Live data
+            </p>
+          </div>
         </div>
-      </div>
 
-      <div className="flex flex-wrap gap-3">
-        {[
-          ["/products", "Manage products"],
-          ["/sales", "Record a sale"],
-          ["/stockin", "Stock-in"],
-          ["/forecasting", "Forecasting"],
-        ].map(([href, label]) => (
-          <a
-            key={href}
-            href={href}
-            className="w-fit rounded border border-zinc-300 px-4 py-2 text-sm text-black hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-50 dark:hover:bg-zinc-900"
-          >
-            {label}
-          </a>
-        ))}
-      </div>
+        <div className="mb-6">
+          <RefreshButton />
+        </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        <StatTile
-          label="Gross profit margin (90d)"
-          value={`${kpis.grossProfitMarginPct}%`}
-          deltaPct={kpis.grossProfitMarginDeltaPct}
-        />
-        <StatTile
-          label="Today's gross profit"
-          value={kpis.todayProfit.toFixed(2)}
-          deltaPct={kpis.todayProfitDeltaPct}
-          deltaSuffix="%"
-        />
-        <StatTile label="Active SKUs" value={kpis.skuCount} />
-      </div>
+        <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+          <StatTile
+            icon="₱"
+            iconColor="#0ca30c"
+            label="Gross profit margin"
+            value={`${kpis.grossProfitMarginPct}%`}
+            deltaPct={kpis.grossProfitMarginDeltaPct}
+            deltaSuffix="pt"
+          />
+          <StatTile
+            icon="₱"
+            iconColor="#3987e5"
+            label="Today's profit"
+            value={kpis.todayProfit.toFixed(2)}
+            deltaPct={kpis.todayProfitDeltaPct}
+          />
+          <StatTile icon="#" iconColor="#c98500" label="Active SKUs" value={kpis.skuCount} />
+        </div>
 
-      <section className="flex flex-col gap-2">
-        <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">
-          Sales trend (units/month)
-        </h2>
-        <SalesHeatmap years={heatmap.years} cells={heatmap.cells} />
-      </section>
+        <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3">
+          <StatTile
+            icon="▤"
+            iconColor="#3987e5"
+            label="Total units in stock"
+            value={summary.totalUnitsInStock}
+            href="/products"
+          />
+          <StatTile
+            icon="!"
+            iconColor="#d03b3b"
+            label="Restocking items (critical)"
+            value={summary.restockingCritical}
+            href="/stockin"
+          />
+          <StatTile
+            icon="—"
+            iconColor="#6b7280"
+            label="Items with no recent sales"
+            value={summary.noRecentSales}
+            href="/sales"
+          />
+        </div>
 
-      <section className="flex flex-col gap-2">
-        <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">
-          Product performance (trailing 90 days)
-        </h2>
-        <PerformanceTable rows={performance} />
-      </section>
+        <div className="mb-6 grid gap-4 lg:grid-cols-[2fr_1fr_1fr]">
+          <Card title="Sales Volume Heatmap" subtitle="Units sold per month, full history">
+            <SalesHeatmap years={heatmap.years} cells={heatmap.cells} />
+          </Card>
+          <Card title="Top 5 Best-Selling Parts" subtitle="Trailing 90-day unit volume">
+            <BestSellingChart data={summary.topSelling} />
+          </Card>
+          <Card title="Stock by Category" subtitle="Share of units on hand">
+            <StockByCategoryChart data={summary.categoryTotals} />
+          </Card>
+        </div>
+
+        <Card title="Tracking" subtitle="Click a SKU to view its demand forecast">
+          <TrackingTable rows={performance} />
+        </Card>
+      </main>
+    </div>
+  );
+}
+
+function Card({ title, subtitle, children }) {
+  return (
+    <div className="rounded-lg border p-4" style={{ backgroundColor: theme.cardBg, borderColor: theme.border }}>
+      <h2 className="text-sm font-semibold" style={{ color: theme.textPrimary }}>
+        {title}
+      </h2>
+      {subtitle && (
+        <p className="mb-3 text-xs" style={{ color: theme.textMuted }}>
+          {subtitle}
+        </p>
+      )}
+      {children}
     </div>
   );
 }

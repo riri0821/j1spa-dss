@@ -138,6 +138,29 @@ export async function getProductPerformance(supabase) {
   return rows;
 }
 
+// Everything here is derived from getProductPerformance()'s rows - no extra
+// Supabase round trip needed, just different views of the same data.
+export function summarizeDashboard(performanceRows) {
+  const totalUnitsInStock = performanceRows.reduce((s, r) => s + r.stockOnHand, 0);
+  const restockingCritical = performanceRows.filter((r) => r.status === "Low stock").length;
+  const noRecentSales = performanceRows.filter((r) => r.movement === "No recent sales").length;
+
+  const topSelling = [...performanceRows]
+    .sort((a, b) => b.units90d - a.units90d)
+    .slice(0, 5)
+    .map((r) => ({ sku: r.sku, name: r.name, units90d: r.units90d }));
+
+  const stockByCategory = new Map();
+  for (const r of performanceRows) {
+    stockByCategory.set(r.category, (stockByCategory.get(r.category) ?? 0) + r.stockOnHand);
+  }
+  const categoryTotals = [...stockByCategory.entries()]
+    .map(([category, units]) => ({ category, units }))
+    .sort((a, b) => b.units - a.units);
+
+  return { totalUnitsInStock, restockingCritical, noRecentSales, topSelling, categoryTotals };
+}
+
 export async function getSalesHeatmap(supabase) {
   const { data } = await supabase.from("vw_monthly_sales").select("year, month, units");
   const totals = new Map();
