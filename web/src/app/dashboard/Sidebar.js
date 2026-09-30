@@ -7,6 +7,7 @@ const NAV = [
     items: [
       { href: "/dashboard", label: "Dashboard", key: "dashboard" },
       { href: "/forecasting", label: "Forecasting", key: "forecasting" },
+      { href: "/decision-support", label: "Decision Support", key: "decision-support" },
     ],
   },
   {

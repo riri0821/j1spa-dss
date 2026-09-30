@@ -85,7 +85,7 @@ export default async function DashboardPage() {
             iconColor="#d03b3b"
             label="Restocking items (critical)"
             value={summary.restockingCritical}
-            href="/stockin"
+            href="/decision-support"
           />
           <StatTile
             icon="—"

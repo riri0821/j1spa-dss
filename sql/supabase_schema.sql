@@ -336,10 +336,12 @@ create policy "stock_movements_select" on stock_movements for select
 create policy "stock_movements_insert" on stock_movements for insert
   with check (auth.role() = 'authenticated');
 
--- alerts: read-only for everyone signed in; written by the app/service
--- role, not by end users.
+-- alerts: read-only for everyone signed in; written by the owner-triggered
+-- rules engine (Decision Support screen).
 create policy "alerts_select" on alerts for select
   using (auth.role() = 'authenticated');
+create policy "alerts_insert" on alerts for insert
+  with check (current_user_role() = 'owner');
 
 -- =====================================================================
 --  RPC functions for atomic multi-table writes.
