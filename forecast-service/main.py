@@ -24,9 +24,20 @@ def health():
     return {"ok": True}
 
 
+SHORT_TO_FULL = {
+    "MA": "Simple Moving Average", "WMA": "Weighted Moving Average",
+    "Linear Regression": "Linear Regression", "ARIMA": "ARIMA",
+    "Holt-Winters": "Holt-Winters",
+}
+
+
 @app.get("/forecast/{sku}", dependencies=[Depends(require_internal_key)])
-def forecast(sku: str, horizon: int | None = Query(default=None)):
-    result = forecast_product(sku, horizon=horizon)
+def forecast(sku: str, horizon: int | None = Query(default=None), models: str | None = Query(default=None)):
+    allowed = (
+        {SHORT_TO_FULL[m] for m in models.split(",") if m in SHORT_TO_FULL}
+        if models else None
+    )
+    result = forecast_product(sku, horizon=horizon, allowed=allowed)
     if "error" in result:
         raise HTTPException(status_code=404, detail=result["error"])
     return result
