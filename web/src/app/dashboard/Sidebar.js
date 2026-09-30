@@ -20,7 +20,10 @@ const NAV = [
   },
   {
     section: "System",
-    items: [{ href: "/settings", label: "Settings", key: "settings" }],
+    items: [
+      { href: "/imports", label: "Data Import", key: "imports" },
+      { href: "/settings", label: "Settings", key: "settings" },
+    ],
   },
 ];
 
