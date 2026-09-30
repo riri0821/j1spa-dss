@@ -21,15 +21,15 @@ export default function StockByCategoryChart({ data }) {
   const total = slices.reduce((s, d) => s + d.units, 0) || 1;
 
   return (
-    <div className="flex items-center gap-4">
-      <ResponsiveContainer width={140} height={140}>
+    <div className="flex flex-col items-center gap-3">
+      <ResponsiveContainer width="100%" height={220}>
         <PieChart>
           <Pie
             data={slices}
             dataKey="units"
             nameKey="category"
-            innerRadius={40}
-            outerRadius={65}
+            innerRadius={62}
+            outerRadius={100}
             paddingAngle={2}
             stroke={theme.cardBg}
             strokeWidth={2}
@@ -49,14 +49,16 @@ export default function StockByCategoryChart({ data }) {
           />
         </PieChart>
       </ResponsiveContainer>
-      <ul className="flex flex-col gap-1.5 text-xs">
+      <ul className="grid w-full grid-cols-1 gap-x-4 gap-y-1.5 text-xs">
         {slices.map((s, i) => (
           <li key={s.category} className="flex items-center gap-2">
             <span
               className="h-2 w-2 shrink-0 rounded-full"
               style={{ backgroundColor: s.category === "Other" ? CATEGORY_OTHER : CATEGORICAL[i % CATEGORICAL.length] }}
             />
-            <span style={{ color: theme.textSecondary }}>{s.category}</span>
+            <span className="truncate" style={{ color: theme.textSecondary }}>
+              {s.category}
+            </span>
             <span className="ml-auto tabular-nums" style={{ color: theme.textPrimary }}>
               {Math.round((s.units / total) * 100)}%
             </span>

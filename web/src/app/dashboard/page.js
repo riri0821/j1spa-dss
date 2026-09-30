@@ -3,7 +3,6 @@ import { createClient } from "@/lib/supabase/server";
 import { getKpis, getProductPerformance, getSalesHeatmap, summarizeDashboard } from "@/lib/analytics";
 import { theme } from "./theme";
 import Sidebar from "./Sidebar";
-import RefreshButton from "./RefreshButton";
 import StatTile from "./StatTile";
 import SalesHeatmap from "./SalesHeatmap";
 import BestSellingChart from "./BestSellingChart";
@@ -49,10 +48,6 @@ export default async function DashboardPage() {
           </div>
         </div>
 
-        <div className="mb-6">
-          <RefreshButton />
-        </div>
-
         <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
           <StatTile
             icon="₱"
@@ -96,7 +91,7 @@ export default async function DashboardPage() {
           />
         </div>
 
-        <div className="mb-6 grid gap-4 lg:grid-cols-[2fr_1fr_1fr]">
+        <div className="mb-6 grid gap-4 lg:grid-cols-[1.15fr_1fr_1fr]">
           <Card title="Sales Volume Heatmap" subtitle="Units sold per month, full history">
             <SalesHeatmap years={heatmap.years} cells={heatmap.cells} />
           </Card>
