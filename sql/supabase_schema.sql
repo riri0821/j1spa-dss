@@ -154,7 +154,8 @@ create table sales (
   total_cost    numeric(14,2) not null default 0,
   status        sale_status not null default 'confirmed',
   voided_ts     timestamptz,
-  note          varchar(255)
+  note          varchar(255),
+  source_type   varchar(40) not null default 'Direct Sales Entry'
 );
 create index ix_sales_ts on sales (sale_ts);
 
