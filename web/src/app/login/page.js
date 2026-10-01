@@ -2,36 +2,41 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { motion, AnimatePresence } from "framer-motion";
+import { User, Lock, Eye, EyeOff, AlertCircle, Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import Characters from "./Characters";
 
 export default function LoginPage() {
   const router = useRouter();
   const supabase = createClient();
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [focusedField, setFocusedField] = useState(null); // "email" | "password" | null
+
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
+  const [success, setSuccess] = useState(false);
 
   useEffect(() => {
     if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("deactivated")) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setError("This account has been deactivated. Contact the owner.");
+      setErrorMessage("This account has been deactivated. Contact the owner.");
     }
   }, []);
 
   async function handleSubmit(e) {
     e.preventDefault();
-    setError("");
-    setLoading(true);
+    setErrorMessage("");
+    setIsSubmitting(true);
 
-    const { data, error: signInError } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+    const { data, error: signInError } = await supabase.auth.signInWithPassword({ email, password });
 
     if (signInError) {
-      setError(signInError.message);
-      setLoading(false);
+      setErrorMessage(signInError.message);
+      setIsSubmitting(false);
       return;
     }
 
@@ -42,62 +47,160 @@ export default function LoginPage() {
       .single();
 
     if (profileError) {
-      setError("Signed in, but no profile row was found for this account.");
-      setLoading(false);
+      setErrorMessage("Signed in, but no profile row was found for this account.");
+      setIsSubmitting(false);
       return;
     }
 
     if (!profile.is_active) {
       await supabase.auth.signOut();
-      setError("This account has been deactivated. Contact the owner.");
-      setLoading(false);
+      setErrorMessage("This account has been deactivated. Contact the owner.");
+      setIsSubmitting(false);
       return;
     }
 
-    router.push(profile.role === "owner" ? "/dashboard" : "/sales");
-    router.refresh();
+    setSuccess(true);
+    setIsSubmitting(false);
+    setTimeout(() => {
+      router.push(profile.role === "owner" ? "/dashboard" : "/sales");
+      router.refresh();
+    }, 900);
   }
 
-  return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 p-8 font-sans dark:bg-black">
-      <form
-        onSubmit={handleSubmit}
-        className="flex w-full max-w-sm flex-col gap-4 rounded-lg border border-zinc-200 bg-white p-8 dark:border-zinc-800 dark:bg-zinc-950"
-      >
-        <h1 className="text-xl font-semibold text-black dark:text-zinc-50">J1SPA DSS</h1>
+  const formFields = (
+    <>
+      <AnimatePresence>
+        {errorMessage && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="mt-6 flex items-center gap-2 rounded-lg border border-[#d03b3b]/20 bg-[#d03b3b]/10 p-3 text-xs text-[#d03b3b]"
+          >
+            <AlertCircle className="h-4 w-4 shrink-0" />
+            <span>{errorMessage}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-        <label className="flex flex-col gap-1 text-sm text-zinc-700 dark:text-zinc-300">
-          Email
-          <input
-            type="email"
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="rounded border border-zinc-300 bg-white px-3 py-2 text-black dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
-          />
-        </label>
+      <form onSubmit={handleSubmit} className="mt-6 flex flex-col gap-5">
+        <div>
+          <label className="mb-1.5 block text-xs font-medium text-[#9aa3b2]">Email</label>
+          <div className="relative">
+            <User className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#6b7280]" />
+            <input
+              type="email"
+              required
+              value={email}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                if (errorMessage) setErrorMessage("");
+              }}
+              onFocus={() => setFocusedField("email")}
+              onBlur={() => setFocusedField(null)}
+              placeholder="name@j1spa.com"
+              className="w-full rounded-xl border border-[rgba(255,255,255,0.08)] bg-[#0d1119] py-3 pl-10 pr-4 text-sm text-[#f5f6f8] transition-colors placeholder:text-[#6b7280] focus:border-[#22c55e] focus:outline-none focus:ring-1 focus:ring-[#22c55e]/50"
+            />
+          </div>
+        </div>
 
-        <label className="flex flex-col gap-1 text-sm text-zinc-700 dark:text-zinc-300">
-          Password
-          <input
-            type="password"
-            required
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="rounded border border-zinc-300 bg-white px-3 py-2 text-black dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
-          />
-        </label>
-
-        {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+        <div>
+          <label className="mb-1.5 block text-xs font-medium text-[#9aa3b2]">Password</label>
+          <div className="relative">
+            <Lock className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#6b7280]" />
+            <input
+              type={showPassword ? "text" : "password"}
+              required
+              value={password}
+              onChange={(e) => {
+                setPassword(e.target.value);
+                if (errorMessage) setErrorMessage("");
+              }}
+              onFocus={() => setFocusedField("password")}
+              onBlur={() => setFocusedField(null)}
+              placeholder="••••••••"
+              className="w-full rounded-xl border border-[rgba(255,255,255,0.08)] bg-[#0d1119] py-3 pl-10 pr-10 text-sm text-[#f5f6f8] transition-colors placeholder:text-[#6b7280] focus:border-[#22c55e] focus:outline-none focus:ring-1 focus:ring-[#22c55e]/50"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword((v) => !v)}
+              aria-label={showPassword ? "Hide password" : "Show password"}
+              className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#6b7280] transition-colors hover:text-[#f5f6f8]"
+            >
+              {showPassword ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+            </button>
+          </div>
+        </div>
 
         <button
           type="submit"
-          disabled={loading}
-          className="rounded bg-black px-4 py-2 text-white disabled:opacity-50 dark:bg-white dark:text-black"
+          disabled={isSubmitting || success}
+          className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-[#22c55e] py-3 text-sm font-semibold text-[#05230f] shadow-lg transition hover:brightness-110 disabled:opacity-60"
         >
-          {loading ? "Signing in..." : "Sign in"}
+          {isSubmitting ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <span>Signing in...</span>
+            </>
+          ) : success ? (
+            <span>Welcome back!</span>
+          ) : (
+            <span>Log In</span>
+          )}
         </button>
       </form>
+    </>
+  );
+
+  return (
+    <div className="flex h-screen w-screen overflow-hidden bg-[#05070c] text-[#f5f6f8]">
+      {/* MOBILE: curved brand panel on top, form, characters at the bottom */}
+      <div className="flex md:hidden h-full w-full flex-col overflow-y-auto">
+        <div className="shrink-0 rounded-b-[2.5rem] bg-[#0a0e16] px-7 pt-14 pb-10">
+          <h1 className="text-2xl font-bold tracking-tight text-[#f5f6f8]">J1SPA Analytics</h1>
+        </div>
+
+        <div className="px-7 pt-8">
+          <h2 className="text-xl font-bold text-[#f5f6f8]">Login</h2>
+          {formFields}
+        </div>
+
+        <div className="mt-auto pt-10 h-52 w-full shrink-0">
+          <Characters
+            isTyping={focusedField === "email"}
+            showPassword={showPassword}
+            passwordLength={password.length}
+            loginFailed={!!errorMessage}
+            loginSuccess={success}
+            mobile
+          />
+        </div>
+      </div>
+
+      {/* DESKTOP: two-column layout */}
+      {/* LEFT: full-bleed illustration panel */}
+      <div className="hidden md:flex md:w-2/5 h-full items-center justify-center bg-[#0a0e16] relative overflow-hidden">
+        <div className="absolute inset-0 bg-[radial-gradient(rgba(255,255,255,0.08)_1px,transparent_1px)] [background-size:18px_18px] opacity-40 pointer-events-none" />
+        <Characters
+          isTyping={focusedField === "email"}
+          showPassword={showPassword}
+          passwordLength={password.length}
+          loginFailed={!!errorMessage}
+          loginSuccess={success}
+        />
+      </div>
+
+      {/* RIGHT: login form, full height */}
+      <div className="hidden md:flex md:w-3/5 h-full flex-col justify-center px-8 py-16 md:px-20 lg:px-28 bg-[#10151f]">
+        <div className="mx-auto w-full max-w-sm -translate-y-16">
+          <div>
+            <h1 className="text-4xl font-bold tracking-tight text-[#f5f6f8]">J1SPA Analytics</h1>
+            <p className="mt-2 text-sm text-[#9aa3b2]">Owner &amp; Staff Portal</p>
+          </div>
+          <h2 className="mt-8 text-xl font-bold text-[#f5f6f8]">Login</h2>
+          {formFields}
+        </div>
+      </div>
     </div>
   );
 }
