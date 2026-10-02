@@ -48,7 +48,7 @@ export default async function StockInPage() {
 
   if (isOwner) {
     return (
-      <div className="flex h-screen overflow-hidden font-sans" style={{ backgroundColor: theme.pageBg }}>
+      <div className="flex flex-col md:flex-row h-screen overflow-hidden font-sans" style={{ backgroundColor: theme.pageBg }}>
         <Sidebar active="stockin" fullName={profile.full_name} role={profile.role} />
         <main className="flex-1 overflow-y-auto p-8">{body}</main>
       </div>

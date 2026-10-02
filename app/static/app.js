@@ -5,6 +5,20 @@ const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const peso = n => "₱" + Number(n || 0).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const int = n => Number(n || 0).toLocaleString("en-PH");
+/* escape untrusted text (product/category names, notes, ...) before it goes into an innerHTML string */
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+/* tablet/phone sidebar drawer (hamburger toggle + backdrop, see app.css <=1024px) */
+function initNavDrawer() {
+  const toggle = $("#navToggle"), sidebar = $(".sidebar"), backdrop = $("#navBackdrop");
+  if (!toggle || !sidebar || !backdrop) return;
+  const open = () => { sidebar.classList.add("open"); backdrop.classList.add("show"); };
+  const close = () => { sidebar.classList.remove("open"); backdrop.classList.remove("show"); };
+  toggle.addEventListener("click", () => sidebar.classList.contains("open") ? close() : open());
+  backdrop.addEventListener("click", close);
+  $$(".side-nav a", sidebar).forEach(a => a.addEventListener("click", close));
+}
+document.addEventListener("DOMContentLoaded", initNavDrawer);
 
 async function api(url, opts = {}) {
   const r = await fetch(url, {
@@ -28,6 +42,27 @@ function el(tag, attrs = {}, ...kids) {
   return n;
 }
 
+/* tap/click tooltip for chart elements - the native <title> attribute only shows
+   on hover, which doesn't exist on a touchscreen, so tapping a bar or heatmap
+   cell on mobile showed nothing. Elements that want it: class "chart-tip-src"
+   + a click listener calling showChartTip with the same text as their title. */
+let chartTip;
+function showChartTip(text, x, y) {
+  if (!chartTip) {
+    chartTip = el("div", { class: "chart-tip" });
+    document.body.append(chartTip);
+    document.addEventListener("click", e => {
+      if (!e.target.closest(".chart-tip-src")) chartTip.style.display = "none";
+    });
+  }
+  chartTip.textContent = text;
+  chartTip.style.display = "block";
+  const w = Math.min(240, window.innerWidth - 16);
+  chartTip.style.width = w + "px";
+  chartTip.style.left = Math.min(window.innerWidth - w - 8, Math.max(8, x - w / 2)) + "px";
+  chartTip.style.top = Math.max(8, y - 46) + "px";
+}
+
 /* ---------- tiny inline-SVG charts (offline, no CDN) ---------- */
 function barChart(container, rows, { label, value, value2, h = 220 } = {}) {
   container.innerHTML = "";
@@ -45,6 +80,7 @@ function barChart(container, rows, { label, value, value2, h = 220 } = {}) {
     <line class="gridline" x1="${padL}" y1="${Y(v).toFixed(1)}" x2="${w - 4}" y2="${Y(v).toFixed(1)}"/>
     <text class="lbl" x="${padL - 6}" y="${(Y(v) + 3).toFixed(1)}" text-anchor="end">${Math.round(v)}</text>`).join("");
 
+  const tips = [];
   const bars = rows.map((r, i) => {
     const slotW = value2 ? bw * 2 + 3 : bw;
     const x0 = padL + i * gap + (gap - slotW) / 2;
@@ -55,12 +91,14 @@ function barChart(container, rows, { label, value, value2, h = 220 } = {}) {
       const y2 = Y(v2), hgt2 = Math.max(0, baseY - y2);
       return `<rect class="bar2" x="${(x0 + bw + 3).toFixed(1)}" y="${y2.toFixed(1)}" width="${bw}" height="${hgt2.toFixed(1)}" rx="3"/>`;
     })() : "";
-    return `<g><title>${r[label]}: ${int(v1)}${value2 != null ? " / " + int(v2) : ""}</title>
+    const tipText = `${r[label]}: ${int(v1)}${value2 != null ? " / " + int(v2) : ""}`;
+    tips.push(tipText);
+    return `<g class="bar-g chart-tip-src"><title>${esc(tipText)}</title>
       <rect class="bar" x="${x0.toFixed(1)}" y="${y1.toFixed(1)}" width="${bw}" height="${hgt1.toFixed(1)}" rx="3"/>
       ${bar2}
       <text class="lbl val" x="${cx.toFixed(1)}" y="${(y1 - 6).toFixed(1)}" text-anchor="middle">${int(v1)}</text>
       <text class="lbl" x="${cx.toFixed(1)}" y="${(baseY + 14).toFixed(1)}" text-anchor="end"
-        transform="rotate(-30 ${cx.toFixed(1)} ${(baseY + 14).toFixed(1)})">${ellip(String(r[label]), 14)}</text>
+        transform="rotate(-30 ${cx.toFixed(1)} ${(baseY + 14).toFixed(1)})">${esc(ellip(String(r[label]), 14))}</text>
     </g>`;
   }).join("");
 
@@ -69,9 +107,13 @@ function barChart(container, rows, { label, value, value2, h = 220 } = {}) {
     <line class="axis" x1="${padL}" y1="${baseY}" x2="${w - 4}" y2="${baseY}"/>
     ${bars}
   </svg>`;
+  container.querySelectorAll(".bar-g").forEach((g, i) =>
+    g.addEventListener("click", e => showChartTip(tips[i], e.clientX, e.clientY)));
 }
 
-/* historical (solid) + forecast (dashed) line chart with a "now" divider */
+/* historical (solid) + forecast (dashed) line chart with a "now" divider.
+   `hist` and `fc` are both {label, units} points at the same (monthly)
+   resolution the models are actually fit and backtested at. */
 function histForecastChart(container, hist, fc, { h = 260 } = {}) {
   container.innerHTML = "";
   const nH = hist.length, nF = fc.length;
@@ -79,7 +121,7 @@ function histForecastChart(container, hist, fc, { h = 260 } = {}) {
   const total = nH + nF;
   const w = Math.max(560, total * 14 + 60);
   const padL = 34, padB = 24, padT = 8;
-  const all = [...hist.map(p => p.units), ...fc];
+  const all = [...hist.map(p => p.units), ...fc.map(p => p.units)];
   const max = Math.max(10, ...all) * 1.15;
   const X = i => padL + (i / (total - 1)) * (w - padL - 8);
   const Y = v => padT + (1 - v / max) * (h - padT - padB);
@@ -87,17 +129,18 @@ function histForecastChart(container, hist, fc, { h = 260 } = {}) {
 
   const histPts = hist.map((p, i) => [X(i), Y(p.units)]);
   const joinVal = hist[nH - 1].units;
-  const fcPts = [[X(nH - 1), Y(joinVal)], ...fc.map((v, i) => [X(nH + i), Y(v)])];
+  const fcPts = [[X(nH - 1), Y(joinVal)], ...fc.map((p, i) => [X(nH + i), Y(p.units)])];
 
   const yticks = [0, max / 2, max].map(v => `
     <line class="gridline" x1="${padL}" y1="${Y(v)}" x2="${w}" y2="${Y(v)}"/>
     <text class="lbl" x="${padL - 6}" y="${Y(v) + 3}" text-anchor="end">${Math.round(v)}</text>`).join("");
 
   // sparse x labels: every ~Math.ceil(total/12)
+  const points = [...hist, ...fc];
   const step = Math.max(1, Math.ceil(total / 12));
   let xlabels = "";
   for (let i = 0; i < total; i += step) {
-    const lab = i < nH ? (hist[i].label || "").split(" ")[0] : "+" + (i - nH + 1) + "d";
+    const lab = (points[i].label || "").split(" ")[0];
     xlabels += `<text class="lbl" x="${X(i)}" y="${h - 6}" text-anchor="middle">${lab}</text>`;
   }
   const nowX = X(nH - 1);
@@ -106,33 +149,6 @@ function histForecastChart(container, hist, fc, { h = 260 } = {}) {
     <line class="nowline" x1="${nowX}" y1="${padT}" x2="${nowX}" y2="${h - padB}"/>
     <path class="hline" d="${line(histPts)}"/>
     <path class="fline" d="${line(fcPts)}"/>
-    ${xlabels}
-  </svg>`;
-}
-
-/* single-series solid line chart (e.g. monthly volume trend) */
-function simpleLineChart(container, points, { h = 180 } = {}) {
-  container.innerHTML = "";
-  if (points.length < 2) { container.append(el("p", { class: "muted" }, "Not enough history to plot.")); return; }
-  const n = points.length;
-  const w = Math.max(320, n * 90);
-  const padL = 40, padB = 24, padT = 10;
-  const max = Math.max(10, ...points.map(p => p.units)) * 1.15;
-  const X = i => padL + (i / (n - 1)) * (w - padL - 10);
-  const Y = v => padT + (1 - v / max) * (h - padT - padB);
-  const pts = points.map((p, i) => [X(i), Y(p.units)]);
-  const line = pts.map((p, i) => (i ? "L" : "M") + p[0].toFixed(1) + " " + p[1].toFixed(1)).join(" ");
-
-  const yticks = [0, max / 2, max].map(v => `
-    <line class="gridline" x1="${padL}" y1="${Y(v)}" x2="${w}" y2="${Y(v)}"/>
-    <text class="lbl" x="${padL - 6}" y="${Y(v) + 3}" text-anchor="end">${Math.round(v)}</text>`).join("");
-  const xlabels = points.map((p, i) => `<text class="lbl" x="${X(i)}" y="${h - 6}" text-anchor="middle">${p.label}</text>`).join("");
-  const dots = pts.map((p, i) => `<circle cx="${p[0]}" cy="${p[1]}" r="3.5" fill="var(--brand)"><title>${points[i].label}: ${int(points[i].units)} units</title></circle>`).join("");
-
-  container.innerHTML = `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
-    ${yticks}
-    <path class="vline" d="${line}"/>
-    ${dots}
     ${xlabels}
   </svg>`;
 }
@@ -152,7 +168,7 @@ function donutChart(container, slices, { size = 150, stroke = 20 } = {}) {
     acc += seg;
     return `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${s.color}"
       stroke-width="${stroke}" stroke-dasharray="${dash}" stroke-dashoffset="${offset}">
-      <title>${s.label}: ${Math.round(frac * 100)}%</title></circle>`;
+      <title>${esc(s.label)}: ${Math.round(frac * 100)}%</title></circle>`;
   }).join("");
 
   const wrap = el("div", { class: "donut-wrap" });
@@ -165,6 +181,95 @@ function donutChart(container, slices, { size = 150, stroke = 20 } = {}) {
     el("span", { class: "pct" }, Math.round(s.value / total * 100) + "%"))));
   wrap.append(legend);
   container.append(wrap);
+}
+
+/* calendar heatmap: one row per year, one column per month, cell shade = units sold */
+const HEAT_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/* Reshape the monthly-cells payload into a flat list of {row,col,label,units}
+   buckets (row=year, col=month). Shared by the grid renderer and the
+   min/avg/max stat row so both always agree on the same numbers. */
+function aggregateHeatmap(monthly) {
+  return (monthly.cells || []).map(c => ({ row: String(c.year), col: HEAT_MONTHS[c.month - 1],
+    label: `${HEAT_MONTHS[c.month - 1]} ${c.year}`, units: c.units }));
+}
+
+function heatmapChart(container, monthly) {
+  const buckets = aggregateHeatmap(monthly);
+  if (!buckets.length) { container.innerHTML = ""; container.append(el("p", { class: "muted" }, "No data yet.")); return; }
+
+  const rows = [...new Set(buckets.map(b => b.row))];
+  const cols = HEAT_MONTHS;
+  const bySlot = {};
+  buckets.forEach(b => { bySlot[`${b.row}|${b.col}`] = { units: b.units, label: b.label }; });
+
+  const values = buckets.map(b => b.units).filter(v => v > 0).sort((a, b) => a - b);
+  const q = p => values.length ? values[Math.min(values.length - 1, Math.floor(p * values.length))] : 0;
+  const bounds = [q(0.2), q(0.4), q(0.6), q(0.8)];
+  // 5-step sequential blue scale from very dim (low volume) to bright (high volume)
+  const shadeFor = v => {
+    if (v <= 0) return "var(--surface-2)";
+    if (v <= bounds[0]) return "#15264a";
+    if (v <= bounds[1]) return "#1d4c99";
+    if (v <= bounds[2]) return "#2f6fe0";
+    if (v <= bounds[3]) return "#529bff";
+    return "#b3d9ff";
+  };
+
+  const grid = el("div", { class: "heatmap" });
+  const head = el("div", { class: "heatmap-row heatmap-head" }, el("span", { class: "heatmap-ylabel" }, ""));
+  cols.forEach(c => head.append(el("span", { class: "heatmap-mlabel" }, c)));
+  grid.append(head);
+
+  rows.forEach((r, ri) => {
+    const row = el("div", { class: "heatmap-row" }, el("span", { class: "heatmap-ylabel" }, r));
+    cols.forEach((c, ci) => {
+      const slot = bySlot[`${r}|${c}`];
+      const cell = el("span", {
+        class: "heatmap-cell heatmap-cell-anim",
+        style: `background:${slot ? shadeFor(slot.units) : "transparent"};`
+          + `transition-delay:${(ri * cols.length + ci) * 6}ms`,
+      });
+      if (slot) {
+        cell.title = `${slot.label}: ${int(slot.units)} units`;
+        cell.classList.add("chart-tip-src");
+        cell.addEventListener("click", e => showChartTip(cell.title, e.clientX, e.clientY));
+      }
+      row.append(cell);
+    });
+    grid.append(row);
+  });
+
+  // legend swatches labeled with the actual unit ranges they represent for
+  // this view, not a vague "fewer/more" - ranges are quantiles of the real
+  // data so they shift per granularity (month vs quarter vs year totals).
+  // Rounded to clean estimates (nearest 10/100/500/1000 by magnitude) rather
+  // than the exact quantile value, so the legend reads e.g. "1-1500" not "1-1538".
+  const niceRound = n => {
+    if (n <= 0) return 0;
+    const step = n < 100 ? 10 : n < 1000 ? 100 : n < 10000 ? 500 : 1000;
+    return Math.max(step, Math.round(n / step) * step);
+  };
+  const b = bounds.map(niceRound);
+  const swatch = (color, label) => el("span", { class: "heatmap-legend-sw" },
+    el("span", { class: "heatmap-cell", style: `background:${color}` }),
+    el("span", {}, label));
+  const legend = el("div", { class: "heatmap-legend" },
+    el("span", { class: "heatmap-legend-caption" }, "Units sold:"),
+    swatch("var(--surface-2)", "0"),
+    swatch("#15264a", `1–${int(b[0])}`),
+    swatch("#1d4c99", `${int(b[0] + 1)}–${int(b[1])}`),
+    swatch("#2f6fe0", `${int(b[1] + 1)}–${int(b[2])}`),
+    swatch("#529bff", `${int(b[2] + 1)}–${int(b[3])}`),
+    swatch("#b3d9ff", `${int(b[3] + 1)}+`));
+
+  container.innerHTML = "";
+  container.append(el("div", { class: "heatmap-wrap" }, grid, legend));
+  // trigger the entrance transition (cells start transparent via the class below,
+  // then this frame flips them to their real background so the CSS transition animates)
+  requestAnimationFrame(() => {
+    $$(".heatmap-cell-anim", container).forEach(c => c.classList.add("in"));
+  });
 }
 
 /* =========================================================
@@ -237,7 +342,7 @@ function salesScreen() {
   reviewBtn.addEventListener("click", () => {
     const rows = [...cart.values()];
     $("#confirmSummary").innerHTML =
-      rows.map(l => `<div>${l.qty} &times; ${l.name} (${peso(l.price)} each) = ${peso(l.qty * l.price)}</div>`).join("") +
+      rows.map(l => `<div>${l.qty} &times; ${esc(l.name)} (${peso(l.price)} each) = ${peso(l.qty * l.price)}</div>`).join("") +
       `<hr><b>Total ${peso(rows.reduce((s, l) => s + l.qty * l.price, 0))}</b>`;
     dlg.showModal();
   });
@@ -280,21 +385,47 @@ function salesScreen() {
       const sales = await api("/sales/recent");
       const tb = $("#recentTbl tbody"); tb.innerHTML = "";
       sales.forEach(s => tb.append(el("tr", {},
-        el("td", {}, "#" + s.sale_id),
+        el("td", {}, el("a", { href: "#", onclick: e => { e.preventDefault(); showSaleItems(s.sale_id); } }, "#" + s.sale_id)),
         el("td", {}, s.sale_ts),
         el("td", {}, s.cashier),
         el("td", { class: "num" }, s.lines),
         el("td", { class: "num" }, peso(s.total_amount)),
-        el("td", {}, s.status),
-        el("td", {}, s.status === "confirmed"
-          ? el("button", { class: "secondary", onclick: () => voidSale(s.sale_id) }, "Void")
+        el("td", {}, s.can_undo
+          ? el("button", { class: "secondary", onclick: () => undoSale(s.sale_id) }, "Undo")
           : ""))));
     } catch {}
   }
-  async function voidSale(id) {
-    if (!confirm("Void sale #" + id + "? Stock will be restored.")) return;
-    try { await api(`/sales/${id}/void`, { method: "POST" }); loadRecent(); doSearch(); }
+
+  async function undoSale(id) {
+    if (!confirm("Undo sale #" + id + "? Stock will be restored and it will be removed "
+      + "from Recent Sales. Today's profit on the dashboard updates on the next sync.")) return;
+    try { await api(`/sales/${id}/undo`, { method: "POST" }); loadRecent(); doSearch(); }
     catch (e) { alert(e.message); }
+  }
+
+  const itemsDlg = $("#saleItemsDlg");
+  itemsDlg.querySelector('button[value="close"]').addEventListener("click", () => itemsDlg.close());
+  async function showSaleItems(saleId) {
+    const body = $("#saleItemsBody");
+    $("#saleItemsTitle").textContent = "Sale #" + saleId;
+    body.innerHTML = ""; body.append(el("p", { class: "muted" }, "Loading…"));
+    itemsDlg.showModal();
+    try {
+      const r = await api(`/sales/${saleId}/items`);
+      body.innerHTML = "";
+      body.append(el("p", { class: "muted" },
+        `${r.sale.sale_ts} · ${r.sale.cashier}` + (r.sale.note ? ` · ${r.sale.note}` : "")));
+      if (r.items.length) {
+        r.items.forEach(it => body.append(el("div", {},
+          `${it.quantity} × ${it.name} (${it.sku}) @ ${peso(it.unit_price)} = ${peso(it.line_revenue)}`)));
+      } else {
+        body.append(el("p", { class: "muted" }, "No line items found."));
+      }
+      body.append(el("hr", {}), el("b", {}, "Total " + peso(r.sale.total_amount)));
+    } catch (e) {
+      body.innerHTML = "";
+      body.append(el("p", { class: "result err" }, "Could not load: " + e.message));
+    }
   }
 
   flushQueue((done) => { if (done) loadRecent(); });
@@ -340,7 +471,6 @@ function stockInScreen() {
 
   recordBtn.addEventListener("click", async () => {
     const body = {
-      type: $("#moveType").value,
       reference: $("#moveRef").value,
       items: [...cart.entries()].map(([product_id, l]) => ({ product_id, qty: l.qty })),
     };
@@ -348,7 +478,7 @@ function stockInScreen() {
     try {
       const r = await api("/stockin/confirm", { method: "POST", body: JSON.stringify(body) });
       res.className = "result ok";
-      res.innerHTML = "Recorded:<br>" + r.recorded.map(x => `${x.name}: ${x.change > 0 ? "+" : ""}${x.change} -> ${x.balance}`).join("<br>");
+      res.innerHTML = "Recorded:<br>" + r.recorded.map(x => `${esc(x.name)}: ${x.change > 0 ? "+" : ""}${x.change} -> ${x.balance}`).join("<br>");
       cart.clear(); draw(); doSearch();
     } catch (e) { res.className = "result err"; res.textContent = e.message; }
   });
@@ -373,9 +503,9 @@ function productsScreen() {
       const cats = await api("/products/api/categories");
       if (selected && !cats.includes(selected)) cats.push(selected);
       cats.sort();
-      catSel.innerHTML = cats.map(c => `<option value="${c}">${c}</option>`).join("")
+      catSel.innerHTML = cats.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join("")
         + `<option value="__new__">+ Add new category…</option>`;
-      catSel.value = selected && cats.includes(selected) ? selected : (cats[0] || "__new__");
+      catSel.value = selected && cats.includes(selected) ? selected : "__new__";
     } catch {}
     syncCategoryNew();
   }
@@ -468,6 +598,42 @@ function productsScreen() {
 function dashboardScreen() {
   const CAT_COLORS = ["var(--cat-1)", "var(--cat-2)", "var(--cat-3)", "var(--cat-4)"];
   let allRows = [];
+  let heatData = null;
+
+  function renderHeatmap() {
+    if (!heatData) return;
+    heatmapChart($("#volHeatmap"), heatData);
+    renderHeatStats();
+  }
+
+  function renderHeatStats() {
+    const buckets = aggregateHeatmap(heatData);
+    const vals = buckets.map(b => b.units);
+    const box = $("#heatStats"); box.innerHTML = "";
+    if (!vals.length) return;
+
+    // trend = second half of the visible timeline vs. the first half, so the
+    // arrow reflects "is this getting better or worse over time", not noise
+    const half = Math.max(1, Math.floor(vals.length / 2));
+    const firstHalf = vals.slice(0, half);
+    const secondHalf = vals.slice(half).length ? vals.slice(half) : firstHalf;
+    const avgOf = a => a.reduce((s, v) => s + v, 0) / (a.length || 1);
+    const trendPct = (now, before) => before ? Math.round((now - before) / before * 100) : 0;
+
+    const stat = (value, label, deltaPct) => el("div", { class: "heatmap-stat" },
+      el("div", { class: "heatmap-stat-v" }, int(value),
+        el("span", { class: "heatmap-stat-delta " + (deltaPct >= 0 ? "up" : "down") },
+          (deltaPct >= 0 ? "▲" : "▼") + Math.abs(deltaPct) + "%")),
+      el("div", { class: "heatmap-stat-k" }, label));
+
+    box.append(
+      stat(Math.min(...vals), "Min. units sold",
+           trendPct(Math.min(...secondHalf), Math.min(...firstHalf))),
+      stat(Math.round(avgOf(vals)), "Avg. units sold",
+           trendPct(avgOf(secondHalf), avgOf(firstHalf))),
+      stat(Math.max(...vals), "Max. units sold",
+           trendPct(Math.max(...secondHalf), Math.max(...firstHalf))));
+  }
 
   function renderTracking() {
     const catV = $("#catFilter").value, statusV = $("#statusFilter").value, moveV = $("#moveFilter").value;
@@ -501,18 +667,16 @@ function dashboardScreen() {
   async function load() {
     try {
       const k = await api("/analytics/api/kpis");
-      $("#dashMeta").innerHTML =
-        `Historical repository: ${k.historical_window}<br>Last sync: ${k.last_sync}`;
-      const d = k.gross_profit_margin_delta_pct;
-      const delta = d == null ? "" :
+      $("#dashMeta").innerHTML = `Last sync: ${k.last_sync}`;
+      const deltaHtml = d => d == null ? "" :
         ` <span style="font-size:12px;color:${d >= 0 ? "var(--ok)" : "var(--crit)"}">`
         + `${d >= 0 ? "▲ +" : "▼ "}${d}%</span>`;
       $("#kpis").innerHTML = "";
       const kpi = (vHtml, label) => el("div", { class: "kpi" },
         el("div", { class: "v", html: vHtml }), el("div", { class: "k" }, label));
       $("#kpis").append(
-        kpi(k.gross_profit_margin_pct + "%" + delta, "Gross profit margin"),
-        kpi(peso(k.avg_transaction_value), "Average transaction value"),
+        kpi(k.gross_profit_margin_pct + "%" + deltaHtml(k.gross_profit_margin_delta_pct), "Gross profit margin"),
+        kpi(peso(k.today_profit) + deltaHtml(k.today_profit_delta_pct), "Today's profit"),
         kpi(int(k.sku_count), "Active SKUs"));
     } catch (e) { $("#dashMeta").textContent = "Could not load KPIs: " + e.message; }
 
@@ -528,9 +692,10 @@ function dashboardScreen() {
         const c = el("div", { class: "kpi2" + (onClick ? " kpi2-clickable" : "") });
         c.innerHTML = `<div class="kpi2-top">
             <div class="kpi2-ic ${icClass}">${iconSvg}</div>
+            <div class="v">${vTxt}</div>
             <a class="kpi2-arrow" href="${href}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></a>
           </div>
-          <div class="v">${vTxt}</div><div class="k">${kTxt}</div>`;
+          <div class="k">${kTxt}</div>`;
         if (onClick) {
           const go = e => { e.preventDefault(); onClick(); };
           c.addEventListener("click", go);
@@ -550,19 +715,19 @@ function dashboardScreen() {
         card("ic-brand", '<svg viewBox="0 0 24 24"><path d="M4 4h16v5H4V4zm1 6h14v10H5V10zm4 2v2h6v-2H9z"/></svg>',
           int(totalStock), "Total units in stock", "#trackingPanel", () => filterTrackingTo("", "")),
         card("ic-crit", '<svg viewBox="0 0 24 24"><path d="M12 2 1 21h22L12 2zm0 6 6.5 11h-13L12 8zm-1 4h2v4h-2zm0 5h2v2h-2z"/></svg>',
-          int(lowStock), "Restocking items (critical)", "/alerts/"),
+          int(lowStock), "Restocking items (critical)", "/alerts/", () => { window.location.href = "/alerts/"; }),
         card("ic-warn", '<svg viewBox="0 0 24 24"><path d="M4 4h16l-1 8h-4l-2 3h-2l-2-3H5L4 4zm1 10h14v6H5v-6z"/></svg>',
           int(noSales), "Items with no recent sales", "#trackingPanel", () => filterTrackingTo("No recent sales", "")));
 
       // ---- top 5 best-sellers (bar) ----
       const top5 = [...rows].sort((a, b) => b.units_90d - a.units_90d).slice(0, 5);
-      barChart($("#topChart"), top5, { label: "name", value: "units_90d" });
+      barChart($("#topChart"), top5, { label: "name", value: "units_90d", h: 270 });
 
       // ---- category filter options ----
       const cats = [...new Set(rows.map(r => r.category))].sort();
       const sel = $("#catFilter"); const cur = sel.value;
       sel.innerHTML = `<option value="">All Categories</option>`
-        + cats.map(c => `<option value="${c}">${c}</option>`).join("");
+        + cats.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join("");
       sel.value = cur;
 
       // ---- stock-by-category donut ----
@@ -572,20 +737,23 @@ function dashboardScreen() {
       const top = sorted.slice(0, 4).map(([label, value], i) => ({ label, value, color: CAT_COLORS[i] }));
       const rest = sorted.slice(4).reduce((s, [, v]) => s + v, 0);
       if (rest > 0) top.push({ label: "Other", value: rest, color: "var(--cat-other)" });
-      donutChart($("#catDonut"), top);
+      donutChart($("#catDonut"), top, { size: 195, stroke: 26 });
 
       renderTracking();
     } catch (e) { $("#velNote").textContent = e.message; }
 
     try {
-      const vol = await api("/analytics/api/monthly-volume");
-      simpleLineChart($("#volChart"), vol);
-    } catch (e) { $("#volChart").innerHTML = `<p class="muted">${e.message}</p>`; }
+      heatData = await api("/analytics/api/sales-heatmap");
+      renderHeatmap();
+    } catch (e) { $("#volHeatmap").innerHTML = `<p class="muted">${e.message}</p>`; }
   }
 
   $("#catFilter").addEventListener("change", renderTracking);
   $("#statusFilter").addEventListener("change", renderTracking);
   $("#moveFilter").addEventListener("change", renderTracking);
+
+  // phone-only: filters collapse behind this toggle (hidden by CSS on tablet/desktop)
+  $("#trackingFilterToggle").addEventListener("click", () => $("#trackingFilters").classList.toggle("show"));
 
   $("#refreshBtn").addEventListener("click", async () => {
     const m = $("#refreshMsg"); m.textContent = "Syncing…";
@@ -656,7 +824,7 @@ function forecastingScreen() {
 
     histForecastChart($("#fcChart"),
       (d.history || []).slice(-18).map(h => ({ label: h.label, units: h.units })),
-      d.forecast_curve || []);
+      d.forecast_monthly || []);
 
     // ---- depletion estimate panel ----
     const gapNeg = (d.coverage_gap ?? 0) < 0;
@@ -690,7 +858,7 @@ function forecastingScreen() {
     // ---- model comparison table (MSE primary, MAPE supporting) ----
     const tb = $("#modelTbl tbody"); tb.innerHTML = "";
     const order = ["Simple Moving Average", "Weighted Moving Average", "Linear Regression",
-      "ARIMA", "Holt-Winters", "Naive (last month)"];
+      "ARIMA", "Holt-Winters"];
     const entries = Object.entries(d.models || {})
       .sort((a, b) => order.indexOf(a[0]) - order.indexOf(b[0]));
     entries.forEach(([name, m]) => {
@@ -718,7 +886,7 @@ function forecastingScreen() {
       ? `<div class="flash error">No sales transactions have been recorded for this item yet, so no
          forecast model has run. Figures above are placeholders, not a real forecast.</div>`
       : `<div class="flash error">Insufficient history (${d.months_history} months, need 24).
-         Forecast falls back to Simple Moving Average / naive and is flagged as low-confidence.</div>`;
+         Forecast falls back to Simple Moving Average and is flagged as low-confidence.</div>`;
   }
 }
 

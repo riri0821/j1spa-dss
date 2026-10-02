@@ -1,9 +1,8 @@
 {% extends "base.html" %}
 {% block title %}Business Analytics & Sales Intelligence{% endblock %}
 {% block page_title %}Business Analytics &amp; Sales Intelligence{% endblock %}
-{% block page_subtitle %}<p class="sub">Business Owner / Admin access</p>{% endblock %}
+{% block page_subtitle %}<p class="sub">Business Owner &middot; <span id="dashMeta"></span></p>{% endblock %}
 {% block page_actions %}
-  <div class="muted" id="dashMeta" style="font-size:12px;line-height:1.5"></div>
   <a href="{{ url_for('imports.screen') }}"><button class="secondary">Import historical records</button></a>
 {% endblock %}
 {% block content %}
@@ -18,14 +17,15 @@
 
 <div class="chart-row">
   <section class="panel">
+    <h2 style="margin-bottom:2px">Sales Volume Heatmap</h2>
+    <p class="muted" style="margin:0">Units sold per month, full history</p>
+    <div class="heatmap-stats" id="heatStats"></div>
+    <div class="chart" id="volHeatmap"></div>
+  </section>
+  <section class="panel">
     <h2>Top 5 Best-Selling Parts</h2>
     <p class="muted" style="margin:0 0 10px">Trailing 90-day unit volume</p>
     <div class="chart" id="topChart"></div>
-  </section>
-  <section class="panel">
-    <h2>Monthly Sales Volume</h2>
-    <p class="muted" style="margin:0 0 10px">Units sold, last 6 months</p>
-    <div class="chart" id="volChart"></div>
   </section>
   <section class="panel">
     <h2>Stock by Category</h2>
@@ -40,7 +40,10 @@
       <h2 style="margin-bottom:2px">Tracking</h2>
       <p class="muted" style="margin:0">Click any row to view demand forecast</p>
     </div>
-    <div class="row" style="flex:none;gap:8px">
+    <button type="button" id="trackingFilterToggle" class="secondary tracking-filter-toggle" title="Filters">
+      <svg viewBox="0 0 24 24"><path d="M3 4h18l-7 8v6l-4 2v-8L3 4z"/></svg>Filters
+    </button>
+    <div class="row" id="trackingFilters" style="flex:none;gap:8px">
       <select id="catFilter" style="width:auto;min-width:160px"><option value="">All Categories</option></select>
       <select id="moveFilter" style="width:auto;min-width:150px">
         <option value="">All Movement</option>

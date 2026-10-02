@@ -57,9 +57,12 @@ def api_delete():
     deactivated (hidden from active lists) instead."""
     data = request.get_json(silent=True) or {}
     pid = data.get("product_id")
-    if not pid:
+    if pid is None:
         return jsonify(error="product_id is required."), 400
-    pid = int(pid)
+    try:
+        pid = int(pid)
+    except (TypeError, ValueError):
+        return jsonify(error="product_id must be an integer."), 400
 
     with ops_conn() as c:
         prod = q(c, "SELECT sku FROM products WHERE product_id = :pid", pid=pid)
@@ -112,9 +115,12 @@ def save():
 
     with ops_conn() as c:
         if pid:  # update (opening_stock is not editable here; use Stock-In adjustments)
+            # vehicle_compat has no field in the edit form, so it's deliberately left
+            # out of this UPDATE - including it would null out any existing value
+            # (e.g. from historical import) on every save.
             c.execute(text("""
                 UPDATE products SET name=:name, category=:category, brand=:brand,
-                    supplier=:supplier, vehicle_compat=:vehicle_compat,
+                    supplier=:supplier,
                     unit_cost=:unit_cost, unit_price=:unit_price,
                     reorder_point=:reorder_point, is_active=:is_active
                 WHERE product_id = :pid

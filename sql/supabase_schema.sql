@@ -40,6 +40,8 @@ drop function if exists undo_sale(bigint) cascade;
 drop function if exists record_stock_movements(jsonb, text) cascade;
 drop function if exists monthly_demand(text) cascade;
 drop function if exists monthly_demand_all() cascade;
+drop function if exists monthly_sales_totals() cascade;
+drop function if exists sales_kpi_summary() cascade;
 
 drop type if exists user_role;
 drop type if exists sale_status;
@@ -640,3 +642,60 @@ as $$
 $$;
 
 grant execute on function monthly_demand_all() to authenticated, service_role;
+
+-- Shop-wide monthly totals for the dashboard's Sales Volume Heatmap, grouped
+-- by year/month only (not per-sku like monthly_demand_all() above) - this
+-- card never needs a sku breakdown, and selecting straight from
+-- vw_monthly_sales for every sku x month combination returns 40,000+ rows
+-- for the real catalog, which PostgREST silently truncates to its default
+-- 1000-row page unless the caller paginates. Aggregating in SQL instead
+-- caps this at one row per calendar month (a few dozen, ever) - correct by
+-- construction instead of "paginate correctly," not just a bigger ceiling.
+create or replace function monthly_sales_totals()
+returns table(year int, month int, units numeric)
+language sql
+stable
+as $$
+  select
+    extract(year from s.sale_ts)::int as year,
+    extract(month from s.sale_ts)::int as month,
+    sum(si.quantity)::numeric as units
+  from sale_items si
+  join sales s on s.sale_id = si.sale_id
+  where s.status = 'confirmed'
+  group by year, month
+  order by year, month;
+$$;
+
+grant execute on function monthly_sales_totals() to authenticated, service_role;
+
+-- Current-vs-previous-90-day revenue/cost totals for the dashboard's Gross
+-- Profit Margin tile, aggregated in SQL instead of summed client-side over
+-- every confirmed sale in the last 180 days - at real sales volume that
+-- raw fetch exceeds PostgREST's default 1000-row page (with no order-by,
+-- landing on an arbitrary leading slice instead of the real last-90-days
+-- data). This always returns exactly one row.
+create or replace function sales_kpi_summary()
+returns table(
+  current_revenue numeric,
+  current_cost numeric,
+  previous_revenue numeric,
+  previous_cost numeric
+)
+language sql
+stable
+as $$
+  select
+    coalesce(sum(total_amount) filter (
+      where sale_ts >= now() - interval '90 days'), 0) as current_revenue,
+    coalesce(sum(total_cost) filter (
+      where sale_ts >= now() - interval '90 days'), 0) as current_cost,
+    coalesce(sum(total_amount) filter (
+      where sale_ts < now() - interval '90 days'), 0) as previous_revenue,
+    coalesce(sum(total_cost) filter (
+      where sale_ts < now() - interval '90 days'), 0) as previous_cost
+  from sales
+  where status = 'confirmed' and sale_ts >= now() - interval '180 days';
+$$;
+
+grant execute on function sales_kpi_summary() to authenticated, service_role;

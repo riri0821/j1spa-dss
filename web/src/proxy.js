@@ -30,12 +30,19 @@ export async function proxy(request) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const isPublicPath = request.nextUrl.pathname.startsWith("/login");
+  // /auth/confirm verifies a password-reset link for a not-yet-signed-in
+  // visitor, and /api/auth/forgot-password is the public form submission
+  // that sends that link - both have to be reachable with no session.
+  const isPublicPath = ["/login", "/auth/confirm", "/api/auth/forgot-password"].some((p) =>
+    request.nextUrl.pathname.startsWith(p)
+  );
 
   if (!user && !isPublicPath) {
-    const url = request.nextUrl.clone();
-    url.pathname = "/login";
-    return NextResponse.redirect(url);
+    // A fresh URL, not request.nextUrl.clone() - cloning carries over every
+    // query param from the original request, including Next's internal
+    // `_rsc=...` prefetch param, which would otherwise leak into the
+    // address bar as http://.../login?_rsc=...
+    return NextResponse.redirect(new URL("/login", request.url));
   }
 
   // A deactivated account (Settings -> Deactivate) still has a valid
@@ -46,8 +53,7 @@ export async function proxy(request) {
     const { data: profile } = await supabase.from("profiles").select("is_active").eq("id", user.id).single();
     if (profile && !profile.is_active) {
       await supabase.auth.signOut();
-      const url = request.nextUrl.clone();
-      url.pathname = "/login";
+      const url = new URL("/login", request.url);
       url.searchParams.set("deactivated", "1");
       return NextResponse.redirect(url);
     }

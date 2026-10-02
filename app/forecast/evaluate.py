@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from .models import REGISTRY, naive
+from .models import REGISTRY
 
 
 def _metrics(actual: np.ndarray, pred: np.ndarray) -> dict:
@@ -42,8 +42,7 @@ def evaluate_all(y: pd.Series, backtest_months: int = 6,
 
     `allowed` (full model names) restricts which of the five candidates are
     compared; None means all. If history is shorter than `min_months_history`,
-    only Simple Moving Average and the naive method are considered and the
-    result is flagged."""
+    only Simple Moving Average is considered and the result is flagged."""
     insufficient = len(y) < min_months_history
     results: dict[str, dict] = {}
 
@@ -67,12 +66,6 @@ def evaluate_all(y: pd.Series, backtest_months: int = 6,
         except Exception:
             continue
         results[name] = m
-
-    # naive baseline is always available
-    nb = rolling_backtest(y, naive, backtest_months)
-    if nb is not None:
-        nb["next"] = naive(y)
-        results["Naive (last month)"] = nb
 
     if not results:
         return {"insufficient_history": True, "models": {}, "chosen": None,

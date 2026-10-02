@@ -3,7 +3,6 @@
 import { useMemo, useState } from "react";
 import { theme, STATUS, CATEGORICAL } from "./theme";
 
-const ABC_COLOR = { A: CATEGORICAL[0], B: "#5598e7", C: "#9ec5f4" };
 const PAGE_SIZE = 20;
 
 export default function TrackingTable({ rows }) {
@@ -68,7 +67,6 @@ export default function TrackingTable({ rows }) {
               <th className="px-3 py-2 font-normal">SKU</th>
               <th className="px-3 py-2 font-normal">Item name</th>
               <th className="px-3 py-2 font-normal">Category</th>
-              <th className="px-3 py-2 font-normal">Class</th>
               <th className="px-3 py-2 font-normal">Movement</th>
               <th className="px-3 py-2 font-normal">Stock level</th>
               <th className="px-3 py-2 font-normal">Status</th>
@@ -90,13 +88,6 @@ export default function TrackingTable({ rows }) {
                   </td>
                   <td className="px-3 py-2" style={{ color: theme.textSecondary }}>
                     {r.category}
-                  </td>
-                  <td className="px-3 py-2">
-                    <span
-                      className="mr-1.5 inline-block h-2 w-2 rounded-full align-middle"
-                      style={{ backgroundColor: ABC_COLOR[r.abcClass] }}
-                    />
-                    <span style={{ color: theme.textSecondary }}>{r.abcClass}</span>
                   </td>
                   <td className="px-3 py-2" style={{ color: theme.textSecondary }}>
                     {r.movement}
@@ -127,7 +118,7 @@ export default function TrackingTable({ rows }) {
             })}
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-3 py-6 text-center" style={{ color: theme.textMuted }}>
+                <td colSpan={6} className="px-3 py-6 text-center" style={{ color: theme.textMuted }}>
                   No products match these filters.
                 </td>
               </tr>

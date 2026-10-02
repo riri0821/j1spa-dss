@@ -88,7 +88,15 @@ export async function evaluateDecisionSupport(supabase) {
     supabase.from("products").select("product_id, sku, name, stock_on_hand, reorder_point").eq("is_active", true),
     // one query for every SKU's monthly demand, instead of one round trip
     // per product (576 separate calls against the real catalog - fine for
-    // a handful of test products, not fine at real scale)
+    // a handful of test products, not fine at real scale). Returns 40,000+
+    // rows for the real catalog - requires the Supabase project's API "Max
+    // Rows" setting (Settings -> API) to be raised above that, since
+    // PostgREST's 1000-row default would otherwise silently truncate it.
+    // Deliberately NOT paginated client-side: this view's group-by+order-by
+    // re-runs its full join across every sale line item on each call, so
+    // fetching it in N pages re-pays that full cost N times (~30s total for
+    // 43 pages, worse in parallel - it overloads Postgres and pages start
+    // timing out). A single call stays the ~1s it always was.
     supabase.rpc("monthly_demand_all"),
   ]);
 

@@ -1,6 +1,8 @@
 """Stock-In / Inventory Movement screen (paper 3.10.5). Available to owner and
-staff. Records deliveries (stock_in) and manual corrections (adjustment) with
-the same on-screen quantity control as the sales screen."""
+staff. One quantity stepper per line, +/- either way - no separate delivery-vs-
+adjustment mode to pick: a positive change is recorded as 'stock_in', a
+negative one as 'adjustment', so a single batch can mix receiving new stock
+and correcting a count without splitting it into two trips through the screen."""
 from flask import Blueprint, render_template, request, jsonify
 from flask_login import login_required, current_user
 from sqlalchemy import text
@@ -34,9 +36,6 @@ def api_products():
 @login_required
 def confirm():
     payload = request.get_json(silent=True) or {}
-    kind = payload.get("type", "stock_in")
-    if kind not in ("stock_in", "adjustment"):
-        return jsonify(error="Bad movement type."), 400
     reference = (payload.get("reference") or "").strip()[:80]
     lines = payload.get("items") or []
 
@@ -46,8 +45,6 @@ def confirm():
             pid = int(ln["product_id"]); qty = int(ln["qty"])
         except (KeyError, ValueError, TypeError):
             return jsonify(error="Bad line item."), 400
-        if kind == "stock_in" and qty <= 0:
-            return jsonify(error="Stock-in quantity must be positive."), 400
         if qty == 0:
             continue
         cleaned.append((pid, qty))
@@ -66,13 +63,16 @@ def confirm():
             if new_bal < 0:
                 return jsonify(error=(f"Adjustment would make {row['name']} negative "
                                       f"({row['stock_on_hand']} {qty:+d}).")), 409
+            # positive change = stock received; negative = a correction - inferred from
+            # the sign so there's no separate mode to pick on screen (see module docstring)
+            mt = "stock_in" if qty > 0 else "adjustment"
             c.execute(text("UPDATE products SET stock_on_hand = :b WHERE product_id = :p"),
                       {"b": new_bal, "p": pid})
             c.execute(text("""
                 INSERT INTO stock_movements (product_id, sku, movement_type, quantity,
                     balance_after, user_id, reference)
                 VALUES (:pid,:sku,:mt,:q,:bal,:uid,:ref)
-            """), {"pid": pid, "sku": row["sku"], "mt": kind, "q": qty,
+            """), {"pid": pid, "sku": row["sku"], "mt": mt, "q": qty,
                    "bal": new_bal, "uid": int(current_user.id), "ref": reference or None})
             recorded.append({"sku": row["sku"], "name": row["name"],
                              "change": qty, "balance": new_bal})

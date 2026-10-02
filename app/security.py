@@ -7,10 +7,40 @@ Two roles:
             forecasts, no alerts, no unit cost / gross profit.
 """
 from functools import wraps
+from time import time
 import bcrypt
 from flask import abort
 from flask_login import UserMixin, current_user
 from .db import ops_conn, q
+
+# Brute-force login lockout. In-memory (per-process) is fine here: this is a
+# single-process dev server for a small shop, not a load-balanced deployment.
+# Keyed on username alone rather than username+IP - simpler, and this app's
+# threat model is a handful of staff on a private network / tailnet, not a
+# public-internet service where that tradeoff (an attacker locking out a
+# known username) would matter more.
+MAX_LOGIN_ATTEMPTS = 5
+LOGIN_LOCKOUT_SECONDS = 30
+_failed_logins: dict[str, list[float]] = {}
+
+
+def seconds_locked_out(username: str) -> int:
+    """0 if `username` may attempt login now, else seconds remaining."""
+    attempts = _failed_logins.get(username, [])
+    now = time()
+    recent = [t for t in attempts if now - t < LOGIN_LOCKOUT_SECONDS]
+    _failed_logins[username] = recent
+    if len(recent) < MAX_LOGIN_ATTEMPTS:
+        return 0
+    return max(1, round(LOGIN_LOCKOUT_SECONDS - (now - recent[0])))
+
+
+def record_failed_login(username: str) -> None:
+    _failed_logins.setdefault(username, []).append(time())
+
+
+def clear_failed_logins(username: str) -> None:
+    _failed_logins.pop(username, None)
 
 
 class User(UserMixin):

@@ -1,7 +1,7 @@
-"""The five candidate forecasting models from paper section 3.5, plus a naive
-baseline. Each function takes a pandas Series of monthly unit demand (a clean,
-gap-free monthly index) and returns the one-step-ahead forecast for the next
-month (a non-negative float)."""
+"""The five candidate forecasting models from paper section 3.5. Each function
+takes a pandas Series of monthly unit demand (a clean, gap-free monthly index)
+and returns the one-step-ahead forecast for the next month (a non-negative
+float)."""
 from __future__ import annotations
 import warnings
 import numpy as np
@@ -12,10 +12,6 @@ warnings.filterwarnings("ignore")  # statsmodels convergence chatter
 
 def _clip(x: float) -> float:
     return float(max(0.0, round(x, 4)))
-
-
-def naive(y: pd.Series) -> float:
-    return _clip(y.iloc[-1])
 
 
 def simple_moving_average(y: pd.Series, window: int = 3) -> float:
@@ -73,7 +69,7 @@ REGISTRY = {
 SHORT = {
     "Simple Moving Average": "MA", "Weighted Moving Average": "WMA",
     "Linear Regression": "Linear Regression", "ARIMA": "ARIMA",
-    "Holt-Winters": "Holt-Winters", "Naive (last month)": "Naive",
+    "Holt-Winters": "Holt-Winters",
 }
 
 
@@ -100,6 +96,6 @@ def forecast_n(name: str, y: pd.Series, steps: int) -> list[float]:
         t = _np.arange(len(y)).reshape(-1, 1)
         m = LinearRegression().fit(t, y.to_numpy(dtype=float))
         return [_clip(float(m.predict([[len(y) + i]])[0])) for i in range(steps)]
-    # SMA / WMA / naive -> flat next value
-    fn = REGISTRY.get(name, (naive, 0))[0] if name in REGISTRY else naive
+    # SMA / WMA -> flat next value
+    fn = REGISTRY.get(name, (simple_moving_average, 0))[0]
     return [fn(y)] * steps

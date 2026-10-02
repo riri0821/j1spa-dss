@@ -14,6 +14,16 @@ def _bool(name: str, default: str = "false") -> bool:
 class Config:
     SECRET_KEY = os.getenv("FLASK_SECRET_KEY", "dev-only-not-secret")
     DEBUG = _bool("FLASK_DEBUG", "0")
+    # Template auto-reload is normally tied to DEBUG, but DEBUG is kept off here even
+    # during development (the app is reachable over the network / a future tailnet,
+    # and Flask's debug mode serves full stack traces + an interactive debugger to
+    # anyone who can reach it) - set independently so template edits still pick up
+    # without a restart.
+    TEMPLATES_AUTO_RELOAD = True
+    # Explicit rather than relying on the browser's default SameSite behavior:
+    # blocks the session cookie from being sent on cross-site requests (CSRF).
+    SESSION_COOKIE_SAMESITE = "Lax"
+    SESSION_COOKIE_HTTPONLY = True
 
     DB_HOST = os.getenv("DB_HOST", "127.0.0.1")
     DB_PORT = int(os.getenv("DB_PORT", "3306"))

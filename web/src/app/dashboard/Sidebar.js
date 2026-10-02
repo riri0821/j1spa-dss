@@ -42,23 +42,34 @@ export default function Sidebar({ active = "dashboard", fullName, role }) {
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        aria-label={open ? "Close menu" : "Open menu"}
-        className="fixed bottom-4 left-4 z-50 flex h-11 w-11 items-center justify-center rounded-full shadow-lg md:hidden"
-        style={{ backgroundColor: theme.accent, color: "#05230f" }}
+      {/* mobile top bar - normal document flow (not fixed), so it pushes the
+          page content down instead of floating over it; the page root needs
+          flex-col on mobile (md:flex-row) for that stacking to take effect */}
+      <div
+        className="flex h-14 shrink-0 items-center gap-3 border-b px-4 md:hidden"
+        style={{ backgroundColor: theme.sidebarBg, borderColor: theme.border }}
       >
-        {open ? (
-          <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />
-          </svg>
-        ) : (
-          <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M4 7h16M4 12h16M4 17h16" strokeLinecap="round" />
-          </svg>
-        )}
-      </button>
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-label={open ? "Close menu" : "Open menu"}
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md"
+          style={{ color: theme.textPrimary }}
+        >
+          {open ? (
+            <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />
+            </svg>
+          ) : (
+            <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M4 7h16M4 12h16M4 17h16" strokeLinecap="round" />
+            </svg>
+          )}
+        </button>
+        <p className="text-sm font-semibold" style={{ color: theme.textPrimary }}>
+          J1SPA Analytics
+        </p>
+      </div>
 
       {open && (
         <div

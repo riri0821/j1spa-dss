@@ -33,10 +33,10 @@ export default async function DashboardPage() {
   const summary = summarizeDashboard(performance);
 
   return (
-    <div className="flex h-screen overflow-hidden font-sans" style={{ backgroundColor: theme.pageBg }}>
+    <div className="flex flex-col md:flex-row h-screen overflow-hidden font-sans" style={{ backgroundColor: theme.pageBg }}>
       <Sidebar active="dashboard" fullName={profile.full_name} role={profile.role} />
 
-      <main className="flex-1 overflow-y-auto p-8">
+      <main className="flex-1 overflow-y-auto p-4 md:p-8">
         <div className="mb-6 flex items-start justify-between">
           <div>
             <h1 className="text-xl font-semibold" style={{ color: theme.textPrimary }}>
@@ -48,7 +48,7 @@ export default async function DashboardPage() {
           </div>
         </div>
 
-        <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
           <StatTile
             icon="₱"
             iconColor="#0ca30c"
@@ -57,17 +57,6 @@ export default async function DashboardPage() {
             deltaPct={kpis.grossProfitMarginDeltaPct}
             deltaSuffix="pt"
           />
-          <StatTile
-            icon="₱"
-            iconColor="#3987e5"
-            label="Today's profit"
-            value={kpis.todayProfit.toFixed(2)}
-            deltaPct={kpis.todayProfitDeltaPct}
-          />
-          <StatTile icon="#" iconColor="#c98500" label="Active SKUs" value={kpis.skuCount} />
-        </div>
-
-        <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3">
           <StatTile
             icon="▤"
             iconColor="#3987e5"
@@ -81,13 +70,6 @@ export default async function DashboardPage() {
             label="Restocking items (critical)"
             value={summary.restockingCritical}
             href="/decision-support"
-          />
-          <StatTile
-            icon="—"
-            iconColor="#6b7280"
-            label="Items with no recent sales"
-            value={summary.noRecentSales}
-            href="/sales"
           />
         </div>
 

@@ -1,6 +1,10 @@
 """Direct Sales Entry (paper 1.4.2 obj. 1, 3.10.5). Available to owner and
-staff. Writes to the operational database only; the ETL later consolidates
-these rows into the warehouse. No unit cost or gross profit is shown here."""
+staff. A recorded sale can be undone (Recent Sales "Undo"): stock is put
+back, the sale is marked voided and dropped from Recent Sales, and the next
+ETL sync removes it from the warehouse so it no longer counts toward the
+dashboard's today's-profit figure. Writes to the operational database only;
+the ETL later consolidates these rows into the warehouse. No unit cost or
+gross profit is shown here."""
 import datetime
 from flask import Blueprint, render_template, request, jsonify, abort
 from flask_login import login_required, current_user
@@ -106,32 +110,44 @@ def confirm():
 @bp.route("/recent")
 @login_required
 def recent():
+    """Most recent confirmed sales. Undone sales drop off this list entirely
+    (see undo() below) rather than showing with a "voided" status."""
     with ops_conn() as c:
         sales = q(c, """
-            SELECT s.sale_id, s.sale_ts, s.total_amount, s.status, s.note,
+            SELECT s.sale_id, s.sale_ts, s.total_amount, s.note, s.user_id,
                    u.full_name AS cashier,
                    (SELECT COUNT(*) FROM sale_items si WHERE si.sale_id = s.sale_id) AS line_count
             FROM sales s JOIN users u ON u.user_id = s.user_id
+            WHERE s.status = 'confirmed'
             ORDER BY s.sale_id DESC LIMIT 25
         """)
+    today = datetime.date.today()
     for s in sales:
+        # staff may undo only their own sale on the same day; owner may undo any
+        s["can_undo"] = (current_user.is_owner
+                          or (str(s["user_id"]) == current_user.id
+                              and s["sale_ts"].date() == today))
+        del s["user_id"]
         s["sale_ts"] = s["sale_ts"].strftime("%Y-%m-%d %H:%M")
         s["total_amount"] = float(s["total_amount"])
         s["lines"] = s.pop("line_count")
     return jsonify(sales)
 
 
-@bp.route("/<int:sale_id>/void", methods=["POST"])
+@bp.route("/<int:sale_id>/undo", methods=["POST"])
 @login_required
-def void(sale_id):
+def undo(sale_id):
+    """Undo a sale: restore stock, mark the sale voided (it drops off Recent
+    Sales), and flag it unsynced so the next ETL run removes it from the
+    warehouse - the dashboard's today's-profit figure updates on that sync,
+    same as any other sale."""
     with ops_conn() as c:
         s = q(c, "SELECT * FROM sales WHERE sale_id = :id FOR UPDATE", id=sale_id)
         if not s:
             abort(404)
         s = s[0]
         if s["status"] == "voided":
-            return jsonify(error="Already voided."), 409
-        # staff may void only their own sale on the same day; owner may void any
+            return jsonify(error="Already undone."), 409
         if not current_user.is_owner and (
             str(s["user_id"]) != current_user.id
             or s["sale_ts"].date() != datetime.date.today()
@@ -151,9 +167,36 @@ def void(sale_id):
                     balance_after, user_id, reference)
                 VALUES (:pid,:sku,'void_increment',:q,:bal,:uid,:ref)
             """), {"pid": it["product_id"], "sku": it["sku"], "q": it["quantity"],
-                   "bal": new_bal, "uid": int(current_user.id), "ref": f"void:{sale_id}"})
+                   "bal": new_bal, "uid": int(current_user.id), "ref": f"undo:{sale_id}"})
         c.execute(text("""
             UPDATE sales SET status='voided', voided_ts=NOW(), synced_dw=0
             WHERE sale_id = :id
         """), {"id": sale_id})
     return jsonify(ok=True, sale_id=sale_id)
+
+
+@bp.route("/<int:sale_id>/items")
+@login_required
+def items(sale_id):
+    """Line items for one sale, for the Recent Sales '#' click-through popup."""
+    with ops_conn() as c:
+        sale = q(c, """
+            SELECT s.sale_id, s.sale_ts, s.total_amount, s.note, u.full_name AS cashier
+            FROM sales s JOIN users u ON u.user_id = s.user_id
+            WHERE s.sale_id = :id
+        """, id=sale_id)
+        if not sale:
+            abort(404)
+        rows = q(c, """
+            SELECT si.sku, p.name, si.quantity, si.unit_price, si.line_revenue
+            FROM sale_items si JOIN products p ON p.product_id = si.product_id
+            WHERE si.sale_id = :id
+            ORDER BY si.sale_item_id
+        """, id=sale_id)
+    for r in rows:
+        r["unit_price"] = float(r["unit_price"])
+        r["line_revenue"] = float(r["line_revenue"])
+    sale = sale[0]
+    sale["sale_ts"] = sale["sale_ts"].strftime("%Y-%m-%d %H:%M")
+    sale["total_amount"] = float(sale["total_amount"])
+    return jsonify(sale=sale, items=rows)

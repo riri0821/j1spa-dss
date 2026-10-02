@@ -125,7 +125,7 @@ export default function SalesHeatmap({ years, cells }) {
 
       {hover && (
         <div
-          className="pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-full rounded border px-2 py-1 text-xs shadow-lg"
+          className="pointer-events-none absolute z-10 w-max -translate-x-1/2 -translate-y-full whitespace-nowrap rounded border px-2 py-1 text-xs shadow-lg"
           style={{
             left: hover.x,
             top: hover.y - 6,

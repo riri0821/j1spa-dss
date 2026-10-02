@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Stock In{% endblock %}
 {% block page_title %}Stock In / Inventory Movement{% endblock %}
-{% block page_subtitle %}<p class="sub">Record deliveries and manual stock corrections.</p>{% endblock %}
+{% block page_subtitle %}<p class="sub">Record deliveries and manual stock corrections - use + to receive stock, - to correct a count.</p>{% endblock %}
 {% block content %}
 <div class="grid-2">
   <section class="panel">
@@ -11,17 +11,13 @@
   </section>
   <section class="panel pinned">
     <h2>Movement</h2>
-    <label>Type
-      <select id="moveType">
-        <option value="stock_in">Stock-in (delivery)</option>
-        <option value="adjustment">Adjustment (+/-)</option>
-      </select>
-    </label>
     <label>Reference <input id="moveRef" maxlength="80" placeholder="PO # / reason"></label>
-    <table class="cart" id="cart">
-      <thead><tr><th>Item</th><th>In-stock</th><th class="num">Change</th><th></th></tr></thead>
-      <tbody></tbody>
-    </table>
+    <div class="tbl-scroll">
+      <table class="cart" id="cart">
+        <thead><tr><th>Item</th><th>In-stock</th><th class="num">Change</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
     <div class="panel-foot">
       <div id="result" class="result"></div>
       <button id="recordBtn" disabled>Record movement</button>

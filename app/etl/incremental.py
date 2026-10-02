@@ -4,8 +4,10 @@ Runs on a schedule AND on demand from the dashboard's "Refresh" control.
 Reads rows the direct sales entry interface has written since the last run
 (sales/sale_items/stock_movements with synced_dw = 0), validates + key-maps
 them, and appends/updates them in the warehouse. Idempotent: keyed on
-sale_item_id / movement_id, so re-runs are safe. Voided sales are removed
-from the fact table.
+sale_item_id / movement_id, so re-runs are safe. Direct Sales Entry itself has
+no void/cancel path, but the schema still allows sales.status = 'voided' (e.g.
+a restored backup or a manual correction), so voided rows are still excluded
+here rather than loaded into the warehouse as revenue.
 """
 from __future__ import annotations
 from sqlalchemy import text, bindparam

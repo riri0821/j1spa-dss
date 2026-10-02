@@ -25,13 +25,14 @@ def dashboard():
 @owner_only
 def api_kpis():
     """Header KPIs for the built-in executive dashboard (paper 3.10.2):
-    gross profit margin (+ period delta), average transaction value, active
-    SKUs, plus the historical window and last ETL sync shown in the header."""
+    gross profit margin (+ period delta), today's gross profit (+ delta vs
+    yesterday), active SKUs, plus the historical window and last ETL sync
+    shown in the header. "Today" reflects data as of the last ETL sync, not
+    live - the dashboard reads the warehouse, not the operational DB."""
     with dw_conn() as d:
         cur = q(d, """
             SELECT COALESCE(SUM(revenue),0)      AS revenue,
-                   COALESCE(SUM(gross_profit),0) AS gross_profit,
-                   COUNT(DISTINCT sale_id)       AS transactions
+                   COALESCE(SUM(gross_profit),0) AS gross_profit
             FROM fact_transactions f JOIN dim_date d ON d.date_key = f.date_key
             WHERE d.full_date >= (CURDATE() - INTERVAL 90 DAY)
         """)[0]
@@ -45,6 +46,16 @@ def api_kpis():
         span = q(d, """SELECT MIN(d.year) AS y0, MAX(d.year) AS y1
                        FROM dim_date d JOIN fact_transactions f
                             ON f.date_key = d.date_key""")[0]
+        today = q(d, """
+            SELECT COALESCE(SUM(gross_profit),0) AS gross_profit
+            FROM fact_transactions f JOIN dim_date d ON d.date_key = f.date_key
+            WHERE d.full_date = CURDATE()
+        """)[0]
+        yesterday = q(d, """
+            SELECT COALESCE(SUM(gross_profit),0) AS gross_profit
+            FROM fact_transactions f JOIN dim_date d ON d.date_key = f.date_key
+            WHERE d.full_date = (CURDATE() - INTERVAL 1 DAY)
+        """)[0]
 
     with ops_conn() as c:
         sku_count = q(c, "SELECT COUNT(*) AS n FROM products WHERE is_active = 1")[0]["n"]
@@ -54,43 +65,31 @@ def api_kpis():
                  if ls and ls[0]["finished_ts"] else "not yet run")
 
     rev, gp = float(cur["revenue"]), float(cur["gross_profit"])
-    txns = int(cur["transactions"]) or 0
     gpm = round(gp / rev * 100, 2) if rev else 0.0
     prev_rev, prev_gp = float(prev["revenue"]), float(prev["gross_profit"])
     prev_gpm = (prev_gp / prev_rev * 100) if prev_rev else 0.0
+
+    today_profit = float(today["gross_profit"])
+    yesterday_profit = float(yesterday["gross_profit"])
+    # only show a delta once today has *some* recorded profit - a bare 0 most
+    # likely means no sales have synced yet today (early in the day, or the
+    # ETL hasn't run), not an actual 100% crash, so don't flag it as one.
+    # Divide by abs(yesterday) so the sign always reflects better/worse, not
+    # an artifact of yesterday's profit being negative (a refund-heavy day).
+    today_profit_delta_pct = (round((today_profit - yesterday_profit) / abs(yesterday_profit) * 100, 1)
+                              if yesterday_profit and today_profit else None)
 
     return jsonify({
         "window": "trailing 90 days",
         "gross_profit_margin_pct": gpm,
         "gross_profit_margin_delta_pct": round(gpm - prev_gpm, 1),
-        "avg_transaction_value": round(rev / txns, 2) if txns else 0.0,
+        "today_profit": round(today_profit, 2),
+        "today_profit_delta_pct": today_profit_delta_pct,
         "sku_count": sku_count,
         "last_sync": last_sync,
         "historical_window": (f"approximately {span['y0']} to {span['y1']}"
                               if span and span["y0"] else "no history yet"),
     })
-
-
-@bp.route("/api/velocity")
-@login_required
-@owner_only
-def api_velocity():
-    """ABC-style velocity classification by trailing-90-day revenue share."""
-    with dw_conn() as d:
-        rows = q(d, """
-            SELECT sku, product_name, category_name, units_90d, revenue_90d,
-                   gross_profit_90d
-            FROM vw_product_velocity ORDER BY revenue_90d DESC
-        """)
-    total = sum(float(r["revenue_90d"]) for r in rows) or 1.0
-    cum = 0.0
-    for r in rows:
-        rev = float(r["revenue_90d"]); r["revenue_90d"] = round(rev, 2)
-        r["gross_profit_90d"] = round(float(r["gross_profit_90d"]), 2)
-        cum += rev
-        share = cum / total
-        r["class"] = "A" if share <= 0.8 else ("B" if share <= 0.95 else "C")
-    return jsonify(rows)
 
 
 @bp.route("/api/velocity-table")
@@ -131,24 +130,34 @@ def api_velocity_table():
     return jsonify(rows)
 
 
-@bp.route("/api/monthly-volume")
+@bp.route("/api/sales-heatmap")
 @login_required
 @owner_only
-def api_monthly_volume():
-    """Trailing 6-month total unit sales, for the dashboard trend chart."""
+def api_sales_heatmap():
+    """Units sold per (year, month) across the full sales history, for the
+    dashboard's calendar-heatmap tile (replaces a 6-month-only line chart
+    with the whole trend at a glance)."""
     with dw_conn() as d:
+        span = q(d, """SELECT MIN(dd.full_date) AS mn, MAX(dd.full_date) AS mx
+                       FROM dim_date dd JOIN fact_transactions f
+                            ON f.date_key = dd.date_key""")[0]
+        if not span["mn"]:
+            return jsonify({"years": [], "cells": []})
         rows = q(d, """
-            SELECT d.year, d.month, MIN(d.month_name) AS month_name,
+            SELECT dd.year, dd.month, MIN(dd.month_name) AS month_name,
                    COALESCE(SUM(f.quantity),0) AS units
-            FROM dim_date d
-            LEFT JOIN fact_transactions f ON f.date_key = d.date_key
-            WHERE d.full_date >= DATE_SUB(DATE_FORMAT(CURDATE(), '%Y-%m-01'), INTERVAL 5 MONTH)
-              AND d.full_date <  DATE_FORMAT(CURDATE(), '%Y-%m-01') + INTERVAL 1 MONTH
-            GROUP BY d.year, d.month
-            ORDER BY d.year, d.month
-        """)
-    return jsonify([{"label": f"{r['month_name'][:3]} {r['year']}", "units": int(r["units"])}
-                    for r in rows])
+            FROM dim_date dd
+            LEFT JOIN fact_transactions f ON f.date_key = dd.date_key
+            WHERE dd.full_date BETWEEN :mn AND :mx
+            GROUP BY dd.year, dd.month
+            ORDER BY dd.year, dd.month
+        """, mn=span["mn"], mx=span["mx"])
+    years = sorted({r["year"] for r in rows})
+    return jsonify({
+        "years": years,
+        "cells": [{"year": r["year"], "month": r["month"], "month_name": r["month_name"][:3],
+                   "units": int(r["units"])} for r in rows],
+    })
 
 
 @bp.route("/api/etl-status")

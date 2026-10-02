@@ -11,14 +11,78 @@ Adapted from app/forecast/service.py:
   - _daily_curve() takes an already-computed multi-step forecast instead
     of fitting the model itself - forecast_product() now fits ARIMA/
     Holt-Winters once per request and reuses it for both the chart curve
-    and the monthly table, instead of fitting the same model twice."""
+    and the monthly table, instead of fitting the same model twice.
+  - Added the fingerprint-keyed model cache below (ARIMA/Holt-Winters fits
+    are the slow part of a run, and toggling the model-comparison pills or
+    re-opening a SKU was refitting everything from scratch every time)."""
 from __future__ import annotations
+from functools import lru_cache
 import pandas as pd
 
 from config import config
 from db import supabase
-from evaluate import evaluate_all
+from evaluate import evaluate_one, candidate_names
 from models import forecast_n, SHORT
+
+
+def _fingerprint(y: pd.Series) -> tuple:
+    """Hashable snapshot of a monthly series' actual content (period + value
+    pairs), used as the cache key below. A cache hit is only possible when
+    this exact sales history comes back unchanged, so the cache can never
+    serve a stale result - it busts itself the moment new data lands, with
+    no TTL or manual invalidation to get wrong. Values are kept at full
+    float precision (not rounded) since the reconstructed series is what
+    actually gets re-fit - rounding here would silently perturb the ARIMA/
+    Holt-Winters optimizers' inputs."""
+    return tuple((str(p), float(v)) for p, v in y.items())
+
+
+def _series_from_fingerprint(fp: tuple) -> pd.Series:
+    idx = pd.PeriodIndex([p for p, _ in fp], freq="M")
+    return pd.Series([v for _, v in fp], index=idx)
+
+
+@lru_cache(maxsize=1024)
+def _evaluate_one_cached(fp: tuple, backtest_months: int, name: str) -> dict | None:
+    return evaluate_one(_series_from_fingerprint(fp), name, backtest_months)
+
+
+def _evaluate_all_cached(fp: tuple, backtest_months: int,
+                         min_months_history: int, allowed_key: tuple | None) -> dict:
+    """Same contract as evaluate.evaluate_all(), but cached per model rather
+    than per model-combination: flipping a model-comparison pill reuses every
+    already-fit model instead of redoing the whole comparison. Fit
+    sequentially, not in threads - these are CPU-bound numpy/statsmodels fits
+    held under the GIL, not I/O, so extra threads just add context-switching
+    overhead on top of Render's single shared vCPU instead of any real
+    parallelism."""
+    y = _series_from_fingerprint(fp)
+    allowed = set(allowed_key) if allowed_key else None
+    names, insufficient = candidate_names(y, min_months_history, allowed)
+
+    results = {}
+    for name in names:
+        m = _evaluate_one_cached(fp, backtest_months, name)
+        if m is not None:
+            results[name] = m
+
+    if not results:
+        return {"insufficient_history": True, "models": {}, "chosen": None,
+                "forecast_next_month": 0.0}
+
+    chosen = min(results.items(), key=lambda kv: kv[1]["mse"])[0]
+    return {
+        "insufficient_history": insufficient,
+        "models": results,
+        "chosen": chosen,
+        "forecast_next_month": results[chosen]["next"],
+    }
+
+
+@lru_cache(maxsize=256)
+def _forecast_n_cached(fp: tuple, best: str, n_months: int) -> tuple[float, ...]:
+    y = _series_from_fingerprint(fp)
+    return tuple(forecast_n(best, y, n_months))
 
 
 def monthly_series(sku: str) -> pd.Series:
@@ -90,7 +154,9 @@ def forecast_product(sku: str, horizon: int | None = None,
                 "days_to_depletion": None, "coverage_gap": None,
                 "stockout_risk": False, "history": hist}
 
-    ev = evaluate_all(y, config.BACKTEST_MONTHS, config.MIN_MONTHS_HISTORY, allowed)
+    fp = _fingerprint(y)
+    allowed_key = tuple(sorted(allowed)) if allowed else None
+    ev = _evaluate_all_cached(fp, config.BACKTEST_MONTHS, config.MIN_MONTHS_HISTORY, allowed_key)
     best = ev["chosen"]
 
     # One multi-step fit covers both the chart's daily ramp (which needs
@@ -98,7 +164,7 @@ def forecast_product(sku: str, horizon: int | None = None,
     # monthly forecast table below - fitting ARIMA/Holt-Winters a second
     # time for the same series was wasted work in the original version.
     n_months = max(1, -(-horizon // 30))  # ceil(horizon / 30)
-    path_months = forecast_n(best, y, n_months + 1)
+    path_months = list(_forecast_n_cached(fp, best, n_months + 1))
 
     curve, forecast_total = _daily_curve(y, path_months, horizon)
     forecast_30d = round(forecast_total * (30.0 / horizon), 2) if horizon != 30 else forecast_total
