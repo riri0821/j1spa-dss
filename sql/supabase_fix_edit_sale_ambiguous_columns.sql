@@ -11,9 +11,11 @@
 --
 --  Fix: rename the parameters to p_note/p_customer_name/p_customer_contact/
 --  p_customer_address/p_customer_vehicle_brand (same pattern already used
---  for p_sale_id), so they no longer collide with the column names. Same
---  parameter types/order, so this is a plain CREATE OR REPLACE - no need
---  to drop the old overload first.
+--  for p_sale_id), so they no longer collide with the column names.
+--  Postgres won't let CREATE OR REPLACE rename parameters of an existing
+--  function (even with identical types/order) - "cannot change name of
+--  input parameter" (42P13) - so the old overload has to be dropped
+--  first.
 --
 --  web/src/app/sales/SalesScreen.js's saveEditSale() has already been
 --  updated to call edit_sale with the new p_-prefixed argument names, so
@@ -23,6 +25,8 @@
 --  Also mirrored into sql/supabase_schema.sql and
 --  sql/supabase_add_edit_sale.sql.
 -- =====================================================================
+
+drop function if exists edit_sale(bigint, jsonb, text, text, text, text, text);
 
 create or replace function edit_sale(
   p_sale_id bigint,
