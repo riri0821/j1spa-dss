@@ -1,26 +1,28 @@
 -- =====================================================================
---  Behavior change (not a bug): dashboard_gross_net_summary() used to take
---  the "most recent N periods that have at least one transaction" for every
---  granularity - so "Day" could quietly skip a day with zero sales and
---  reach further back to compensate, and "Month" was a rolling 12-month
---  window that crossed year boundaries (e.g. "Nov 25 -> Oct 26") instead of
---  reading as "this year."
+--  Fixes a bug in dashboard_gross_net_summary()'s 'year' branch (Gross &
+--  Net chart, "Year" tab): same root cause as the edit_sale() bug fixed
+--  earlier - the function's `returns table(period_start date, gross
+--  numeric, net numeric)` makes period_start/gross/net implicit plpgsql
+--  variables throughout the function body. The 'year' branch's outer
+--  `select period_start, gross, net from (...) recent` (and the inner
+--  subquery's `group by period_start` / `order by period_start desc`)
+--  referenced those names bare, which Postgres can't resolve between the
+--  plpgsql variable and the subquery's own same-named column - "column
+--  reference 'period_start' is ambiguous" (42702) on every 'year' call.
 --
---  New windows, one fixed calendar range per granularity, zero-filled so a
---  no-sales period still shows as a $0 bar instead of silently vanishing:
---    day   - the last 30 calendar days through today
---    week  - this calendar month only, cut into fixed 7-day chunks
---            (days 1-7, 8-14, 15-21, 22-28, 29-end) rather than Mon-Sun
---            ISO weeks, which would spill into the neighboring month at
---            the edges
---    month - Jan 1 of this year through the current month
---    year  - unchanged: most recent p_periods years that have data
+--  The day/week/month branches never hit this: they always alias off a
+--  qualified source column (days.d as period_start, buckets.bucket_start
+--  as period_start, months.m as period_start) and never reference the
+--  bare alias afterward, so there's nothing ambiguous to resolve.
 --
---  p_periods is now only read by the 'year' branch; day/week/month ignore
---  it since their windows are fixed by the calendar, not a row count.
+--  Fix: qualify every reference with the subquery's `recent` alias, and
+--  group/order by the actual expression instead of the bare alias.
+--  Function signature (name, params, return columns) is unchanged, so
+--  this is a plain CREATE OR REPLACE - no need to drop first.
 --
 --  ADDITIVE ONLY - safe to run with real data. Run in a NEW query tab.
---  Also mirrored into sql/supabase_schema.sql.
+--  Also mirrored into sql/supabase_schema.sql and
+--  sql/supabase_fix_gross_net_windows.sql.
 -- =====================================================================
 
 create or replace function dashboard_gross_net_summary(p_granularity text, p_periods integer default 12)

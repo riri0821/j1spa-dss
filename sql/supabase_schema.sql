@@ -1152,17 +1152,17 @@ begin
         select service_ts as ts, total_amount as amount, 0::numeric as cost
         from services where status = 'confirmed'
       )
-      select period_start, gross, net from (
+      select recent.period_start, recent.gross, recent.net from (
         select
           date_trunc('year', ts)::date as period_start,
           sum(amount)        as gross,
           sum(amount - cost) as net
         from combined
-        group by period_start
-        order by period_start desc
+        group by date_trunc('year', ts)::date
+        order by date_trunc('year', ts)::date desc
         limit p_periods
       ) recent
-      order by period_start asc;
+      order by recent.period_start asc;
   end if;
 end;
 $$;
