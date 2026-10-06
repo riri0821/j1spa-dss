@@ -64,7 +64,7 @@ function fmt(x) {
   return x === Infinity ? "∞" : String(Math.round(x));
 }
 
-function makeAdvisory(product, type, severity, title, message, recommendation, fc30, dtd, rules) {
+function makeAdvisory(product, type, severity, title, message, recommendation, fc30, dtd, rules, isManualType) {
   return {
     productId: product.product_id,
     sku: product.sku,
@@ -79,11 +79,81 @@ function makeAdvisory(product, type, severity, title, message, recommendation, f
     forecast30d: fc30,
     daysToDepletion: dtd === Infinity ? null : dtd,
     rules: rules.map(([id, expr, result]) => ({ id, expr, result })),
+    // isManualType means the owner picked this *type* themselves (see
+    // sql/supabase_add_advisory_overrides.sql) - the rules above are
+    // still the engine's own real evaluation, which may disagree with
+    // the chosen type; that disagreement is expected and shown as-is,
+    // never hidden.
+    isManualType: !!isManualType,
   };
 }
 
+// Builds the standard advisory for a given type off numbers that are
+// already computed for every product regardless of which type naturally
+// fires - lets a manually-chosen type (owner override) reuse the exact
+// same message/rule-trace shape as a rule-triggered one, just built for
+// a type the rules themselves may not have picked.
+function buildTypeAdvisory(type, p, ctx, isManualType) {
+  const { fc30, avg12, dtd, dev, dos, r01, r02, r03, r04, r05, r07, r08, r09 } = ctx;
+
+  if (type === "low_stock") {
+    return makeAdvisory(
+      p,
+      "low_stock",
+      "critical",
+      "Low Stock Alert",
+      `Current stock (${p.stock_on_hand}), reorder point (${p.reorder_point}). Forecasted 30-day demand: ${Math.round(fc30)} units.`,
+      "Reorder immediately",
+      fc30,
+      dtd,
+      [
+        ["R-01", `stock (${p.stock_on_hand}) ≤ ROP (${p.reorder_point})`, r01],
+        ["R-02", `forecast_30d (${Math.round(fc30)}) > on_hand (${p.stock_on_hand})`, r02],
+        ["R-03", `days_to_depletion (${fmt(dtd)}) < lead_time (${LEAD_TIME_DAYS})`, r03],
+      ],
+      isManualType
+    );
+  }
+
+  if (type === "demand_spike") {
+    return makeAdvisory(
+      p,
+      "demand_spike",
+      "warning",
+      "Demand Spike Warning",
+      `30-day forecast (${Math.round(fc30)} units), 12-week average (${Math.round(avg12)} units), up ${dev.toFixed(1)}%.`,
+      "Monitor demand spike",
+      fc30,
+      dtd,
+      [
+        ["R-04", `forecast_30d (${Math.round(fc30)}) > avg_12w (${Math.round(avg12)})`, r04],
+        ["R-05", `deviation_pct (${dev.toFixed(1)}%) > threshold (${SPIKE_THRESHOLD_PCT.toFixed(0)}%)`, r05],
+      ],
+      isManualType
+    );
+  }
+
+  // overstock
+  return makeAdvisory(
+    p,
+    "overstock",
+    "warning",
+    "Overstock Advisory",
+    `Current balance of ${p.stock_on_hand} units with low recent sales.`,
+    "Consider markdown",
+    fc30,
+    dtd,
+    [
+      ["R-07", `on_hand (${p.stock_on_hand}) > ROP×3 (${p.reorder_point * 3})`, r07],
+      ["R-08", 'velocity_class = "Slow-Moving"', r08],
+      ["R-09", `days_of_supply (${fmt(dos)}) > ${OVERSTOCK_DOS_DAYS}`, r09],
+    ],
+    isManualType
+  );
+}
+
 export async function evaluateDecisionSupport(supabase) {
-  const [{ data: velocityRows }, { data: products }, { data: monthlyRows }] = await Promise.all([
+  const [{ data: velocityRows }, { data: products }, { data: monthlyRows }, { data: overrideRows }] = await Promise.all([
     supabase.from("vw_product_velocity").select("sku, units_90d"),
     supabase.from("products").select("product_id, sku, name, stock_on_hand, reorder_point").eq("is_active", true),
     // one query for every SKU's monthly demand, instead of one round trip
@@ -98,8 +168,22 @@ export async function evaluateDecisionSupport(supabase) {
     // 43 pages, worse in parallel - it overloads Postgres and pages start
     // timing out). A single call stays the ~1s it always was.
     supabase.rpc("monthly_demand_all"),
+    supabase.from("advisory_overrides").select("product_id, manual_type"),
   ]);
 
+  // overrideRows failing (e.g. the migration that creates this table not
+  // having been applied yet) would otherwise silently make every owner
+  // override stop applying with no visible sign anything's wrong - log it
+  // rather than let evaluateDecisionSupport() continue as if there were
+  // simply no overrides.
+  if (overrideRows === null) {
+    console.error("evaluateDecisionSupport: advisory_overrides query failed - overrides will not apply");
+  }
+
+  // manual_type is one of 'low_stock' | 'demand_spike' | 'overstock' - the
+  // owner's override of which type shows for that SKU, outranking the
+  // rule engine's own result. See sql/supabase_add_advisory_overrides.sql.
+  const manualTypeMap = new Map((overrideRows ?? []).map((r) => [r.product_id, r.manual_type]));
   const velocityMap = new Map((velocityRows ?? []).map((r) => [r.sku, Number(r.units_90d) || 0]));
   const nonZero = [...velocityMap.values()].filter((v) => v > 0);
   const velocityMedian = median(nonZero);
@@ -124,77 +208,34 @@ export async function evaluateDecisionSupport(supabase) {
     const dev = avg12 > 0 ? round(((fc30 - avg12) / avg12) * 100, 1) : 0;
     const velocity = (velocityMap.get(p.sku) ?? 0) <= velocityMedian ? "Slow-Moving" : "Fast-Moving";
 
-    // ---------- Low stock alert ----------
+    // Every rule check is computed for every product, not just inside the
+    // branch that naturally fires - a manually-chosen type still gets a
+    // real (if possibly FALSE) rule trace to show, never a fabricated one.
     const r01 = p.stock_on_hand <= p.reorder_point;
     const r02 = fc30 > p.stock_on_hand;
     const r03 = dtd < LEAD_TIME_DAYS;
-    if (r01) {
-      advisories.push(
-        makeAdvisory(
-          p,
-          "low_stock",
-          "critical",
-          "Low Stock Alert",
-          `Current stock (${p.stock_on_hand}), reorder point (${p.reorder_point}). Forecasted 30-day demand: ${Math.round(fc30)} units.`,
-          "Reorder immediately",
-          fc30,
-          dtd,
-          [
-            ["R-01", `stock (${p.stock_on_hand}) ≤ ROP (${p.reorder_point})`, r01],
-            ["R-02", `forecast_30d (${Math.round(fc30)}) > on_hand (${p.stock_on_hand})`, r02],
-            ["R-03", `days_to_depletion (${fmt(dtd)}) < lead_time (${LEAD_TIME_DAYS})`, r03],
-          ]
-        )
-      );
-      continue;
-    }
-
-    // ---------- Demand spike warning ----------
     const r04 = fc30 > avg12 && avg12 > 0;
     const r05 = dev > SPIKE_THRESHOLD_PCT;
-    if (r04 && r05) {
-      advisories.push(
-        makeAdvisory(
-          p,
-          "demand_spike",
-          "warning",
-          "Demand Spike Warning",
-          `30-day forecast (${Math.round(fc30)} units), 12-week average (${Math.round(avg12)} units), up ${dev.toFixed(1)}%.`,
-          "Monitor demand spike",
-          fc30,
-          dtd,
-          [
-            ["R-04", `forecast_30d (${Math.round(fc30)}) > avg_12w (${Math.round(avg12)})`, r04],
-            ["R-05", `deviation_pct (${dev.toFixed(1)}%) > threshold (${SPIKE_THRESHOLD_PCT.toFixed(0)}%)`, r05],
-          ]
-        )
-      );
-      continue;
-    }
-
-    // ---------- Overstock advisory ----------
     const r07 = p.reorder_point > 0 && p.stock_on_hand > p.reorder_point * 3;
     const r08 = velocity === "Slow-Moving";
     const r09 = dos > OVERSTOCK_DOS_DAYS;
-    if (r07 && (r08 || r09)) {
-      advisories.push(
-        makeAdvisory(
-          p,
-          "overstock",
-          "warning",
-          "Overstock Advisory",
-          `Current balance of ${p.stock_on_hand} units with low recent sales.`,
-          "Consider markdown",
-          fc30,
-          dtd,
-          [
-            ["R-07", `on_hand (${p.stock_on_hand}) > ROP×3 (${p.reorder_point * 3})`, r07],
-            ["R-08", 'velocity_class = "Slow-Moving"', r08],
-            ["R-09", `days_of_supply (${fmt(dos)}) > ${OVERSTOCK_DOS_DAYS}`, r09],
-          ]
-        )
-      );
-    }
+
+    const naturalType = r01 ? "low_stock" : r04 && r05 ? "demand_spike" : r07 && (r08 || r09) ? "overstock" : null;
+    const manualType = manualTypeMap.get(p.product_id) ?? null;
+    const finalType = manualType || naturalType;
+    if (!finalType) continue;
+
+    const adv = buildTypeAdvisory(
+      finalType,
+      p,
+      { fc30, avg12, dtd, dev, dos, r01, r02, r03, r04, r05, r07, r08, r09 },
+      !!manualType
+    );
+    // What the rule engine would show with no override - lets the edit UI
+    // say "system would currently show: X" even while a manual_type is
+    // already active (null = the rules themselves would show nothing).
+    adv.naturalType = naturalType;
+    advisories.push(adv);
   }
 
   const batchId = new Date().toISOString().replace(/\D/g, "").slice(0, 14);
@@ -212,10 +253,10 @@ export async function evaluateDecisionSupport(supabase) {
       forecast_30d: a.forecast30d,
       days_to_depletion: a.daysToDepletion,
       recommendation: a.recommendation,
-      rule_trace: a.rules
-        .map((r) => `${r.id} ${r.expr} -> ${r.result ? "TRUE" : "FALSE"}`)
-        .join("; ")
-        .slice(0, 255),
+      rule_trace: (
+        (a.isManualType ? "MANUAL OVERRIDE; " : "") +
+        a.rules.map((r) => `${r.id} ${r.expr} -> ${r.result ? "TRUE" : "FALSE"}`).join("; ")
+      ).slice(0, 255),
     }));
     await supabase.from("alerts").insert(rows);
   }

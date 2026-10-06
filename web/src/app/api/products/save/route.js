@@ -21,13 +21,19 @@ export async function POST(request) {
     sku,
     name,
     category: (body.category ?? "").trim() || "Uncategorized",
-    brand: (body.brand ?? "").trim() || "Generic",
     supplier: (body.supplier ?? "").trim() || "Unknown",
     unit_cost: Number(body.unit_cost) || 0,
     unit_price: Number(body.unit_price) || 0,
     reorder_point: Number(body.reorder_point) || 0,
     is_active: !!body.is_active,
   };
+  // brand has no field in this form anymore (replaced by supplier) - only
+  // touch it if a caller still sends one, so saving here doesn't blow away
+  // a product's existing brand. Omitted on insert, the column's own
+  // 'Generic' default applies.
+  if (body.brand !== undefined) {
+    values.brand = (body.brand ?? "").trim() || "Generic";
+  }
 
   if (body.product_id) {
     // Update. vehicle_compat is deliberately left out here, same as the

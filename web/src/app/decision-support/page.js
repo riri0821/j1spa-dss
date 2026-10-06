@@ -42,7 +42,9 @@ export default async function DecisionSupportPage() {
               Advisory only - the system makes no automatic reorder or pricing changes.
             </p>
           </div>
-          <RefreshButton />
+          <div className="mt-10">
+            <RefreshButton />
+          </div>
         </div>
 
         <AdvisoryList advisories={result.advisories} byType={result.byType} severityColor={SEVERITY_COLOR} />

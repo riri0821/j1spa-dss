@@ -34,7 +34,7 @@ export default async function SalesPage() {
             is shown on this screen, matching the original app&apos;s staff restrictions.
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className={`flex items-center gap-3 ${isOwner ? "mt-10" : ""}`}>
           <ExportButton role={profile?.role} />
           {!isOwner && (
             <>

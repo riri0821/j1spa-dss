@@ -160,7 +160,11 @@ create table sales (
   status        sale_status not null default 'confirmed',
   voided_ts     timestamptz,
   note          varchar(255),
-  source_type   varchar(40) not null default 'Direct Sales Entry'
+  source_type   varchar(40) not null default 'Direct Sales Entry',
+  customer_name     varchar(255),
+  customer_contact  varchar(100),
+  customer_address  varchar(255),
+  customer_vehicle_brand varchar(100)
 );
 create index ix_sales_ts on sales (sale_ts);
 
@@ -190,9 +194,33 @@ create table stock_movements (
   balance_after integer not null,
   user_id       uuid references profiles (id),
   reference     varchar(80),
-  note          varchar(255)
+  note          varchar(255),
+  -- snapshots of products.supplier/unit_cost at the moment of a 'stock_in'
+  -- movement only (null for 'adjustment' and other types) - see
+  -- sql/supabase_add_stockin_supplier_cost.sql for the full rationale.
+  supplier      varchar(120),
+  unit_cost     numeric(12,2)
 );
 create index ix_sm_ts on stock_movements (movement_ts);
+
+-- ---------- services (manual entry, not tied to inventory/products) ----------
+create table services (
+  service_id    bigint generated always as identity primary key,
+  service_ts    timestamptz not null default now(),
+  -- nullable: a deleted staff account's old service records get
+  -- reassigned to null (read as "Former staff" in the UI), same as sales
+  user_id       uuid references profiles (id),
+  user_role     user_role not null,
+  service_type  varchar(255) not null,
+  total_amount  numeric(14,2) not null default 0,
+  status        sale_status not null default 'confirmed',
+  voided_ts     timestamptz,
+  customer_name     varchar(255),
+  customer_contact  varchar(100),
+  customer_address  varchar(255),
+  customer_vehicle_brand varchar(100)
+);
+create index ix_services_ts on services (service_ts);
 
 -- ---------- rule-based DSS alert snapshot ----------
 create table alerts (
@@ -213,6 +241,17 @@ create table alerts (
 );
 create index ix_alert_batch on alerts (batch_id);
 create index ix_alert_gen on alerts (generated_ts);
+
+-- owner's override of which Decision Support advisory type shows for a
+-- SKU. See sql/supabase_add_advisory_overrides.sql for the full rationale
+-- - the rule engine's own evaluation is never hidden or faked when a
+-- manual_type is set, just outranked.
+create table advisory_overrides (
+  product_id  bigint primary key references products (product_id) on delete cascade,
+  manual_type varchar(20) not null check (manual_type in ('low_stock', 'demand_spike', 'overstock')),
+  updated_by  uuid references auth.users (id),
+  updated_at  timestamptz not null default now()
+);
 
 -- =====================================================================
 --  Reporting views — replace the old synced star schema. These compute
@@ -306,7 +345,9 @@ alter table products        enable row level security;
 alter table sales           enable row level security;
 alter table sale_items      enable row level security;
 alter table stock_movements enable row level security;
+alter table services        enable row level security;
 alter table alerts          enable row level security;
+alter table advisory_overrides enable row level security;
 
 -- profiles: everyone can read their own row; owners can read every row
 -- (needed for a future staff-management screen).
@@ -345,11 +386,30 @@ create policy "stock_movements_insert" on stock_movements for insert
 create policy "stock_movements_owner_write" on stock_movements for update
   using (current_user_role() = 'owner');
 
+-- services: same shape as sales - any signed-in user can read/insert,
+-- only owners can update (voiding a service record).
+create policy "services_select" on services for select
+  using (auth.role() = 'authenticated');
+create policy "services_insert" on services for insert
+  with check (auth.role() = 'authenticated');
+create policy "services_owner_write" on services for update
+  using (current_user_role() = 'owner');
+
 -- alerts: read-only for everyone signed in; written by the owner-triggered
 -- rules engine (Decision Support screen).
 create policy "alerts_select" on alerts for select
   using (auth.role() = 'authenticated');
 create policy "alerts_insert" on alerts for insert
+  with check (current_user_role() = 'owner');
+
+-- advisory_overrides: same shape as products - any signed-in user can
+-- read, only owners can write.
+drop policy if exists "advisory_overrides_select" on advisory_overrides;
+create policy "advisory_overrides_select" on advisory_overrides for select
+  using (auth.role() = 'authenticated');
+drop policy if exists "advisory_overrides_write" on advisory_overrides;
+create policy "advisory_overrides_write" on advisory_overrides for all
+  using (current_user_role() = 'owner')
   with check (current_user_role() = 'owner');
 
 -- =====================================================================
@@ -366,7 +426,14 @@ create policy "alerts_insert" on alerts for insert
 --  instead, using auth.uid()/current_user_role()).
 -- =====================================================================
 
-create or replace function confirm_sale(items jsonb, note text default null)
+create or replace function confirm_sale(
+  items jsonb,
+  note text default null,
+  customer_name text default null,
+  customer_contact text default null,
+  customer_address text default null,
+  customer_vehicle_brand text default null
+)
 returns jsonb
 language plpgsql
 security definer
@@ -407,8 +474,11 @@ begin
     order by product_id
     for update;
 
-  insert into sales (user_id, user_role, total_amount, total_cost, note)
-  values (v_uid, v_role, 0, 0, nullif(note, ''))
+  insert into sales (user_id, user_role, total_amount, total_cost, note,
+      customer_name, customer_contact, customer_address, customer_vehicle_brand)
+  values (v_uid, v_role, 0, 0, nullif(note, ''),
+      nullif(customer_name, ''), nullif(customer_contact, ''), nullif(customer_address, ''),
+      nullif(customer_vehicle_brand, ''))
   returning sale_id into v_sale_id;
 
   for v_item in select * from jsonb_array_elements(items)
@@ -458,8 +528,8 @@ begin
 end;
 $$;
 
-revoke execute on function confirm_sale(jsonb, text) from public;
-grant execute on function confirm_sale(jsonb, text) to authenticated;
+revoke execute on function confirm_sale(jsonb, text, text, text, text, text) from public;
+grant execute on function confirm_sale(jsonb, text, text, text, text, text) to authenticated;
 
 create or replace function undo_sale(p_sale_id bigint)
 returns jsonb
@@ -515,7 +585,269 @@ $$;
 revoke execute on function undo_sale(bigint) from public;
 grant execute on function undo_sale(bigint) to authenticated;
 
-create or replace function record_stock_movements(items jsonb, reference text default null)
+-- edit_sale(): corrects a confirmed sale's line items/note/customer info
+-- in place (owner: any sale; staff: only their own, no same-day limit,
+-- unlike undo_sale - see sql/supabase_add_edit_sale.sql for the full
+-- rationale). Reverses the sale's old stock impact, then re-applies the
+-- new item list exactly like confirm_sale, re-pricing at products'
+-- CURRENT unit_price/unit_cost.
+create or replace function edit_sale(
+  p_sale_id bigint,
+  items jsonb,
+  p_note text default null,
+  p_customer_name text default null,
+  p_customer_contact text default null,
+  p_customer_address text default null,
+  p_customer_vehicle_brand text default null
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_uid uuid := auth.uid();
+  v_role user_role;
+  v_sale record;
+  v_old record;
+  v_item jsonb;
+  v_pid bigint;
+  v_qty integer;
+  v_product record;
+  v_new_bal integer;
+  v_total_rev numeric(14,2) := 0;
+  v_total_cost numeric(14,2) := 0;
+begin
+  if v_uid is null then
+    raise exception 'Not signed in.';
+  end if;
+  v_role := current_user_role();
+  if v_role is null then
+    raise exception 'No profile found for this account.';
+  end if;
+
+  select * into v_sale from sales where sale_id = p_sale_id for update;
+  if not found then
+    raise exception 'Sale not found.';
+  end if;
+  if v_sale.status = 'voided' then
+    raise exception 'Cannot edit a voided sale.';
+  end if;
+
+  if v_role <> 'owner' and v_sale.user_id is distinct from v_uid then
+    raise exception 'Not allowed to edit this sale.';
+  end if;
+
+  if items is null or jsonb_array_length(items) = 0 then
+    raise exception 'A sale needs at least one line item.';
+  end if;
+
+  perform 1 from products
+    where product_id in (
+      select product_id from sale_items where sale_id = p_sale_id
+      union
+      select (elem ->> 'product_id')::bigint from jsonb_array_elements(items) elem
+    )
+    order by product_id
+    for update;
+
+  for v_old in select product_id, sku, quantity from sale_items where sale_id = p_sale_id
+  loop
+    update products set stock_on_hand = stock_on_hand + v_old.quantity
+      where product_id = v_old.product_id
+      returning stock_on_hand into v_new_bal;
+
+    insert into stock_movements (product_id, sku, movement_type, quantity,
+        balance_after, user_id, reference)
+    values (v_old.product_id, v_old.sku, 'void_increment', v_old.quantity,
+        v_new_bal, v_uid, 'edit:' || p_sale_id);
+  end loop;
+
+  delete from sale_items where sale_id = p_sale_id;
+
+  for v_item in select * from jsonb_array_elements(items)
+  loop
+    v_pid := (v_item ->> 'product_id')::bigint;
+    v_qty := (v_item ->> 'qty')::integer;
+
+    if v_qty is null or v_qty <= 0 then
+      raise exception 'Bad line item.';
+    end if;
+
+    select product_id, sku, unit_price, unit_cost, stock_on_hand
+      into v_product
+      from products where product_id = v_pid;
+
+    if not found then
+      raise exception 'Product % not found.', v_pid;
+    end if;
+    if v_qty > v_product.stock_on_hand then
+      raise exception 'Not enough stock for % (on hand %, requested %).',
+        v_product.sku, v_product.stock_on_hand, v_qty;
+    end if;
+
+    v_new_bal := v_product.stock_on_hand - v_qty;
+
+    insert into sale_items (sale_id, product_id, sku, quantity, unit_price,
+        unit_cost, line_revenue, line_cost)
+    values (p_sale_id, v_pid, v_product.sku, v_qty, v_product.unit_price,
+        v_product.unit_cost, round(v_qty * v_product.unit_price, 2),
+        round(v_qty * v_product.unit_cost, 2));
+
+    update products set stock_on_hand = v_new_bal where product_id = v_pid;
+
+    insert into stock_movements (product_id, sku, movement_type, quantity,
+        balance_after, user_id, reference)
+    values (v_pid, v_product.sku, 'sale_decrement', -v_qty, v_new_bal, v_uid,
+        'edit:' || p_sale_id);
+
+    v_total_rev := v_total_rev + round(v_qty * v_product.unit_price, 2);
+    v_total_cost := v_total_cost + round(v_qty * v_product.unit_cost, 2);
+  end loop;
+
+  update sales set
+      total_amount = v_total_rev,
+      total_cost = v_total_cost,
+      note = nullif(p_note, ''),
+      customer_name = nullif(p_customer_name, ''),
+      customer_contact = nullif(p_customer_contact, ''),
+      customer_address = nullif(p_customer_address, ''),
+      customer_vehicle_brand = nullif(p_customer_vehicle_brand, '')
+    where sale_id = p_sale_id;
+
+  return jsonb_build_object('ok', true, 'sale_id', p_sale_id, 'total_amount', v_total_rev);
+end;
+$$;
+
+revoke execute on function edit_sale(bigint, jsonb, text, text, text, text, text) from public;
+grant execute on function edit_sale(bigint, jsonb, text, text, text, text, text) to authenticated;
+
+-- Services: manual entry, no inventory/stock involvement, so no locking
+-- or line items - just a stamped record of what was recorded and by whom.
+create or replace function record_service(
+  service_type text,
+  total_amount numeric,
+  customer_name text default null,
+  customer_contact text default null,
+  customer_address text default null,
+  customer_vehicle_brand text default null
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_uid uuid := auth.uid();
+  v_role user_role;
+  v_service_id bigint;
+  v_type text := nullif(trim(service_type), '');
+begin
+  if v_uid is null then
+    raise exception 'Not signed in.';
+  end if;
+
+  v_role := current_user_role();
+  if v_role is null then
+    raise exception 'No profile found for this account.';
+  end if;
+
+  if v_type is null then
+    raise exception 'Service type is required.';
+  end if;
+  if total_amount is null or total_amount < 0 then
+    raise exception 'Bad total amount.';
+  end if;
+
+  insert into services (user_id, user_role, service_type, total_amount,
+      customer_name, customer_contact, customer_address, customer_vehicle_brand)
+  values (v_uid, v_role, v_type, total_amount,
+      nullif(customer_name, ''), nullif(customer_contact, ''), nullif(customer_address, ''),
+      nullif(customer_vehicle_brand, ''))
+  returning service_id into v_service_id;
+
+  return jsonb_build_object('service_id', v_service_id, 'total_amount', total_amount);
+end;
+$$;
+
+revoke execute on function record_service(text, numeric, text, text, text, text) from public;
+grant execute on function record_service(text, numeric, text, text, text, text) to authenticated;
+
+create or replace function undo_service(p_service_id bigint)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_uid uuid := auth.uid();
+  v_role user_role;
+  v_service record;
+begin
+  if v_uid is null then
+    raise exception 'Not signed in.';
+  end if;
+  v_role := current_user_role();
+
+  select * into v_service from services where service_id = p_service_id for update;
+  if not found then
+    raise exception 'Service record not found.';
+  end if;
+  if v_service.status = 'voided' then
+    raise exception 'Already undone.';
+  end if;
+
+  -- staff may undo only their own record on the same day; owner may undo any
+  if v_role <> 'owner' and (
+    v_service.user_id is distinct from v_uid or v_service.service_ts::date <> current_date
+  ) then
+    raise exception 'Not allowed to undo this service record.';
+  end if;
+
+  update services set status = 'voided', voided_ts = now() where service_id = p_service_id;
+
+  return jsonb_build_object('ok', true, 'service_id', p_service_id);
+end;
+$$;
+
+revoke execute on function undo_service(bigint) from public;
+grant execute on function undo_service(bigint) to authenticated;
+
+-- set_product_supplier: lets any signed-in profile (not just owner) tag a
+-- product's supplier - an operational label like reference/note, not a
+-- priced field, so it isn't behind the owner-only products_write policy
+-- unit_cost/unit_price get. Needed because Stock In is also used by staff.
+create or replace function set_product_supplier(p_product_id bigint, p_supplier text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_uid uuid := auth.uid();
+  v_role user_role;
+begin
+  if v_uid is null then
+    raise exception 'Not signed in.';
+  end if;
+  v_role := current_user_role();
+  if v_role is null then
+    raise exception 'No profile found for this account.';
+  end if;
+
+  update products set supplier = coalesce(nullif(trim(p_supplier), ''), 'Unknown')
+    where product_id = p_product_id;
+
+  if not found then
+    raise exception 'Product not found.';
+  end if;
+end;
+$$;
+
+revoke execute on function set_product_supplier(bigint, text) from public;
+grant execute on function set_product_supplier(bigint, text) to authenticated;
+
+create or replace function record_stock_movements(items jsonb, reference text default null, supplier text default null)
 returns jsonb
 language plpgsql
 security definer
@@ -525,6 +857,7 @@ declare
   v_uid uuid := auth.uid();
   v_role user_role;
   v_ref text := nullif(trim(reference), '');
+  v_sup text := nullif(trim(supplier), '');
   v_item jsonb;
   v_pid bigint;
   v_qty integer;
@@ -552,6 +885,13 @@ begin
     order by product_id
     for update;
 
+  if v_sup is not null then
+    update products set supplier = v_sup
+      where product_id in (
+        select (elem ->> 'product_id')::bigint from jsonb_array_elements(items) elem
+      );
+  end if;
+
   for v_item in select * from jsonb_array_elements(items)
   loop
     v_pid := (v_item ->> 'product_id')::bigint;
@@ -561,7 +901,7 @@ begin
       continue;
     end if;
 
-    select product_id, sku, name, stock_on_hand into v_product
+    select product_id, sku, name, stock_on_hand, supplier, unit_cost into v_product
       from products where product_id = v_pid;
     if not found then
       raise exception 'Product % not found.', v_pid;
@@ -578,8 +918,12 @@ begin
     update products set stock_on_hand = v_new_bal where product_id = v_pid;
 
     insert into stock_movements (product_id, sku, movement_type, quantity,
-        balance_after, user_id, reference)
-    values (v_pid, v_product.sku, v_mt, v_qty, v_new_bal, v_uid, v_ref);
+        balance_after, user_id, reference, supplier, unit_cost)
+    values (
+      v_pid, v_product.sku, v_mt, v_qty, v_new_bal, v_uid, v_ref,
+      case when v_mt = 'stock_in' then v_product.supplier else null end,
+      case when v_mt = 'stock_in' then v_product.unit_cost else null end
+    );
 
     v_recorded := v_recorded || jsonb_build_object(
       'sku', v_product.sku, 'name', v_product.name,
@@ -595,8 +939,8 @@ begin
 end;
 $$;
 
-revoke execute on function record_stock_movements(jsonb, text) from public;
-grant execute on function record_stock_movements(jsonb, text) to authenticated;
+revoke execute on function record_stock_movements(jsonb, text, text) from public;
+grant execute on function record_stock_movements(jsonb, text, text) to authenticated;
 
 -- Read-only, no security definer needed: authenticated already has SELECT
 -- on sale_items/sales/products via the RLS policies above, and the
@@ -699,3 +1043,128 @@ as $$
 $$;
 
 grant execute on function sales_kpi_summary() to authenticated, service_role;
+
+-- Dashboard's Gross & Net chart: combines sales (which have a cost, so
+-- net = revenue - cost) and services (manual entry, no cost tracked, so
+-- net = gross for that row) into one per-period timeline. Each granularity
+-- gets a fixed calendar window, zero-filled so a no-sales period still
+-- shows as a $0 bar instead of silently vanishing (see
+-- supabase_fix_gross_net_windows.sql for the full rationale):
+--   day   - the last 30 calendar days through today
+--   week  - this calendar month only, cut into fixed 7-day chunks
+--           (1-7, 8-14, 15-21, 22-28, 29-end), not Mon-Sun ISO weeks,
+--           which would spill into the neighboring month at the edges
+--   month - Jan 1 of this year through the current month
+--   year  - most recent p_periods years that have data (p_periods is
+--           only read by this branch - day/week/month windows are fixed
+--           by the calendar, not a row count)
+create or replace function dashboard_gross_net_summary(p_granularity text, p_periods integer default 12)
+returns table(
+  period_start date,
+  gross numeric,
+  net numeric
+)
+language plpgsql
+stable
+as $$
+declare
+  v_today date := current_date;
+begin
+  if p_granularity = 'day' then
+    return query
+      with combined as (
+        select sale_ts::date as ts, total_amount as amount, total_cost as cost
+        from sales where status = 'confirmed'
+        union all
+        select service_ts::date as ts, total_amount as amount, 0::numeric as cost
+        from services where status = 'confirmed'
+      ),
+      days as (
+        select generate_series(v_today - 29, v_today, interval '1 day')::date as d
+      )
+      select
+        days.d as period_start,
+        coalesce(sum(combined.amount), 0) as gross,
+        coalesce(sum(combined.amount - combined.cost), 0) as net
+      from days
+      left join combined on combined.ts = days.d
+      group by days.d
+      order by days.d asc;
+
+  elsif p_granularity = 'week' then
+    return query
+      with combined as (
+        select sale_ts::date as ts, total_amount as amount, total_cost as cost
+        from sales where status = 'confirmed'
+        union all
+        select service_ts::date as ts, total_amount as amount, 0::numeric as cost
+        from services where status = 'confirmed'
+      ),
+      month_bounds as (
+        select
+          date_trunc('month', v_today)::date as m_start,
+          (date_trunc('month', v_today) + interval '1 month' - interval '1 day')::date as m_end
+      ),
+      buckets as (
+        select
+          (m_start + (n * 7)) as bucket_start,
+          least(m_start + (n * 7) + 6, m_end) as bucket_end
+        from month_bounds, generate_series(0, 4) as n
+        where (m_start + (n * 7)) <= m_end
+          and (m_start + (n * 7)) <= v_today
+      )
+      select
+        buckets.bucket_start as period_start,
+        coalesce(sum(combined.amount), 0) as gross,
+        coalesce(sum(combined.amount - combined.cost), 0) as net
+      from buckets
+      left join combined on combined.ts between buckets.bucket_start and buckets.bucket_end
+      group by buckets.bucket_start, buckets.bucket_end
+      order by buckets.bucket_start asc;
+
+  elsif p_granularity = 'month' then
+    return query
+      with combined as (
+        select sale_ts::date as ts, total_amount as amount, total_cost as cost
+        from sales where status = 'confirmed'
+        union all
+        select service_ts::date as ts, total_amount as amount, 0::numeric as cost
+        from services where status = 'confirmed'
+      ),
+      months as (
+        select generate_series(date_trunc('year', v_today), date_trunc('month', v_today), interval '1 month')::date as m
+      )
+      select
+        months.m as period_start,
+        coalesce(sum(combined.amount), 0) as gross,
+        coalesce(sum(combined.amount - combined.cost), 0) as net
+      from months
+      left join combined on date_trunc('month', combined.ts)::date = months.m
+      group by months.m
+      order by months.m asc;
+
+  else -- 'year' - unchanged trailing-periods-with-data behavior
+    return query
+      with combined as (
+        select sale_ts as ts, total_amount as amount, total_cost as cost
+        from sales where status = 'confirmed'
+        union all
+        select service_ts as ts, total_amount as amount, 0::numeric as cost
+        from services where status = 'confirmed'
+      )
+      select period_start, gross, net from (
+        select
+          date_trunc('year', ts)::date as period_start,
+          sum(amount)        as gross,
+          sum(amount - cost) as net
+        from combined
+        group by period_start
+        order by period_start desc
+        limit p_periods
+      ) recent
+      order by period_start asc;
+  end if;
+end;
+$$;
+
+grant execute on function dashboard_gross_net_summary(text, integer) to authenticated, service_role;

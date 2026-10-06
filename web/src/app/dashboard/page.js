@@ -1,10 +1,11 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { getKpis, getProductPerformance, getSalesHeatmap, summarizeDashboard } from "@/lib/analytics";
+import { getKpis, getProductPerformance, summarizeDashboard } from "@/lib/analytics";
 import { theme } from "./theme";
 import Sidebar from "./Sidebar";
 import StatTile from "./StatTile";
-import SalesHeatmap from "./SalesHeatmap";
+import Card from "./Card";
+import GrossNetChart from "./GrossNetChart";
 import BestSellingChart from "./BestSellingChart";
 import StockByCategoryChart from "./StockByCategoryChart";
 import TrackingTable from "./TrackingTable";
@@ -25,11 +26,7 @@ export default async function DashboardPage() {
 
   if (profile?.role !== "owner") redirect("/sales");
 
-  const [kpis, performance, heatmap] = await Promise.all([
-    getKpis(supabase),
-    getProductPerformance(supabase),
-    getSalesHeatmap(supabase),
-  ]);
+  const [kpis, performance] = await Promise.all([getKpis(supabase), getProductPerformance(supabase)]);
   const summary = summarizeDashboard(performance);
 
   return (
@@ -74,8 +71,8 @@ export default async function DashboardPage() {
         </div>
 
         <div className="mb-6 grid gap-4 lg:grid-cols-[1.15fr_1fr_1fr]">
-          <Card title="Sales Volume Heatmap" subtitle="Units sold per month, full history">
-            <SalesHeatmap years={heatmap.years} cells={heatmap.cells} />
+          <Card title="Gross & Net Sales" subtitle="Sales + services combined">
+            <GrossNetChart />
           </Card>
           <Card title="Top 5 Best-Selling Parts" subtitle="Trailing 90-day unit volume">
             <BestSellingChart data={summary.topSelling} />
@@ -85,29 +82,8 @@ export default async function DashboardPage() {
           </Card>
         </div>
 
-        <Card title="Tracking" subtitle="Click a SKU to view its demand forecast">
-          <TrackingTable rows={performance} />
-        </Card>
+        <TrackingTable rows={performance} />
       </main>
-    </div>
-  );
-}
-
-function Card({ title, subtitle, children }) {
-  return (
-    <div
-      className="flex flex-col rounded-lg border p-4"
-      style={{ backgroundColor: theme.cardBg, borderColor: theme.border }}
-    >
-      <h2 className="text-sm font-semibold" style={{ color: theme.textPrimary }}>
-        {title}
-      </h2>
-      {subtitle && (
-        <p className="mb-3 text-xs" style={{ color: theme.textMuted }}>
-          {subtitle}
-        </p>
-      )}
-      <div className="min-h-0 flex-1">{children}</div>
     </div>
   );
 }

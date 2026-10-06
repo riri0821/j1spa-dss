@@ -106,37 +106,3 @@ export function summarizeDashboard(performanceRows) {
   return { totalUnitsInStock, restockingCritical, topSelling, categoryTotals };
 }
 
-export async function getSalesHeatmap(supabase) {
-  // monthly_sales_totals() aggregates in SQL (one row per calendar month) -
-  // selecting straight from vw_monthly_sales instead would return one row
-  // per sku per month (40,000+ for the real catalog), which PostgREST
-  // silently truncates to its default 1000-row page, understating every
-  // month's real unit volume.
-  const { data } = await supabase.rpc("monthly_sales_totals");
-  const totals = new Map();
-  for (const r of data ?? []) {
-    const key = `${r.year}-${r.month}`;
-    totals.set(key, (totals.get(key) ?? 0) + Number(r.units));
-  }
-  if (totals.size === 0) return { years: [], cells: [] };
-
-  // Gap-fill: a month with zero sales inside the historical span is a real
-  // "0", not a missing cell - only months before the first sale or after
-  // the last are left out entirely.
-  const keys = [...totals.keys()].map((k) => k.split("-").map(Number));
-  const first = keys.reduce((a, b) => (a[0] * 12 + a[1] <= b[0] * 12 + b[1] ? a : b));
-  const last = keys.reduce((a, b) => (a[0] * 12 + a[1] >= b[0] * 12 + b[1] ? a : b));
-
-  const cells = [];
-  let [y, m] = first;
-  while (y * 12 + m <= last[0] * 12 + last[1]) {
-    cells.push({ year: y, month: m, units: Math.round(totals.get(`${y}-${m}`) ?? 0) });
-    m += 1;
-    if (m > 12) {
-      m = 1;
-      y += 1;
-    }
-  }
-  const years = [...new Set(cells.map((c) => c.year))].sort((a, b) => a - b);
-  return { years, cells };
-}

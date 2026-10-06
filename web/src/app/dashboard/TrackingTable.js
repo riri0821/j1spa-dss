@@ -1,7 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { theme, STATUS, CATEGORICAL } from "./theme";
+import Card from "./Card";
 
 const PAGE_SIZE = 20;
 
@@ -37,7 +39,36 @@ export default function TrackingTable({ rows }) {
     };
   }
 
+  const paginationArrows = filtered.length > 0 && (
+    <div className="flex items-center gap-2 text-xs" style={{ color: theme.textMuted }}>
+      <span className="tabular-nums">
+        {rangeStart}-{rangeEnd} of {filtered.length}
+      </span>
+      <div className="flex items-center gap-0.5">
+        <button
+          onClick={() => setPage(Math.max(1, currentPage - 1))}
+          disabled={currentPage === 1}
+          aria-label="Previous page"
+          className="flex h-6 w-6 items-center justify-center rounded hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
+          style={{ color: theme.textSecondary }}
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </button>
+        <button
+          onClick={() => setPage(Math.min(totalPages, currentPage + 1))}
+          disabled={currentPage === totalPages}
+          aria-label="Next page"
+          className="flex h-6 w-6 items-center justify-center rounded hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
+          style={{ color: theme.textSecondary }}
+        >
+          <ChevronRight className="h-4 w-4" />
+        </button>
+      </div>
+    </div>
+  );
+
   return (
+    <Card title="Tracking" subtitle="Click a SKU to view its demand forecast" actions={paginationArrows}>
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap gap-2">
         <Select
@@ -127,35 +158,8 @@ export default function TrackingTable({ rows }) {
         </table>
       </div>
 
-      {filtered.length > 0 && (
-        <div className="flex items-center justify-between text-xs" style={{ color: theme.textMuted }}>
-          <span>
-            Showing {rangeStart}-{rangeEnd} of {filtered.length}
-          </span>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => setPage(Math.max(1, currentPage - 1))}
-              disabled={currentPage === 1}
-              className="rounded border px-2 py-1 disabled:cursor-not-allowed disabled:opacity-40"
-              style={{ borderColor: theme.border, color: theme.textSecondary }}
-            >
-              Prev
-            </button>
-            <span>
-              Page {currentPage} of {totalPages}
-            </span>
-            <button
-              onClick={() => setPage(Math.min(totalPages, currentPage + 1))}
-              disabled={currentPage === totalPages}
-              className="rounded border px-2 py-1 disabled:cursor-not-allowed disabled:opacity-40"
-              style={{ borderColor: theme.border, color: theme.textSecondary }}
-            >
-              Next
-            </button>
-          </div>
-        </div>
-      )}
     </div>
+    </Card>
   );
 }
 

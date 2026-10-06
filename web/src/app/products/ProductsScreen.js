@@ -13,7 +13,7 @@ const emptyForm = {
   sku: "",
   name: "",
   category: "",
-  brand: "",
+  supplier: "",
   unit_cost: "",
   unit_price: "",
   reorder_point: "",
@@ -40,14 +40,14 @@ export default function ProductsScreen() {
       let query = supabase
         .from("products")
         .select(
-          "product_id, sku, name, category, brand, unit_cost, unit_price, reorder_point, stock_on_hand, is_active"
+          "product_id, sku, name, category, supplier, unit_cost, unit_price, reorder_point, stock_on_hand, is_active"
         )
         .order("name")
         .limit(500);
 
       if (safeTerm) {
         query = query.or(
-          `name.ilike.%${safeTerm}%,sku.ilike.%${safeTerm}%,brand.ilike.%${safeTerm}%,category.ilike.%${safeTerm}%`
+          `name.ilike.%${safeTerm}%,sku.ilike.%${safeTerm}%,supplier.ilike.%${safeTerm}%,category.ilike.%${safeTerm}%`
         );
       }
 
@@ -96,7 +96,7 @@ export default function ProductsScreen() {
       sku: p.sku,
       name: p.name,
       category: p.category,
-      brand: p.brand,
+      supplier: p.supplier,
       unit_cost: String(p.unit_cost),
       unit_price: String(p.unit_price),
       reorder_point: String(p.reorder_point),
@@ -148,7 +148,7 @@ export default function ProductsScreen() {
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search name, SKU, brand, category..."
+            placeholder="Search name, SKU, supplier, category..."
             className="w-72 rounded border px-3 py-1.5 text-sm"
             style={inputStyle}
           />
@@ -189,7 +189,7 @@ export default function ProductsScreen() {
               <th className="px-3 py-2 font-normal">SKU</th>
               <th className="px-3 py-2 font-normal">Name</th>
               <th className="px-3 py-2 font-normal">Category</th>
-              <th className="px-3 py-2 font-normal">Brand</th>
+              <th className="px-3 py-2 font-normal">Supplier</th>
               <th className="px-3 py-2 text-right font-normal">Cost</th>
               <th className="px-3 py-2 text-right font-normal">Price</th>
               <th className="px-3 py-2 text-right font-normal">Stock</th>
@@ -219,7 +219,7 @@ export default function ProductsScreen() {
                   </td>
                   <td className="px-3 py-2">{p.name}</td>
                   <td className="px-3 py-2">{p.category}</td>
-                  <td className="px-3 py-2">{p.brand}</td>
+                  <td className="px-3 py-2">{p.supplier}</td>
                   <td className="px-3 py-2 text-right">{Number(p.unit_cost).toFixed(2)}</td>
                   <td className="px-3 py-2 text-right">{Number(p.unit_price).toFixed(2)}</td>
                   <td className="px-3 py-2 text-right">{p.stock_on_hand}</td>
@@ -310,8 +310,8 @@ function ProductForm({ form, setForm, categories, onSave, onCancel }) {
           ))}
         </datalist>
       </Field>
-      <Field label="Brand">
-        <input value={form.brand} onChange={(e) => set("brand", e.target.value)} className={inputClass} style={inputStyle} />
+      <Field label="Supplier">
+        <input value={form.supplier} onChange={(e) => set("supplier", e.target.value)} className={inputClass} style={inputStyle} />
       </Field>
       <Field label="Unit cost">
         <input
