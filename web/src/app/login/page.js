@@ -66,18 +66,41 @@ export default function LoginPage() {
     setForgotSent(false);
   }
 
+  async function loginGuard(action) {
+    const res = await fetch("/api/auth/login-guard", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, action }),
+    });
+    return res.json();
+  }
+
   async function handleSubmit(e) {
     e.preventDefault();
     setErrorMessage("");
     setIsSubmitting(true);
 
-    const { data, error: signInError } = await supabase.auth.signInWithPassword({ email, password });
-
-    if (signInError) {
-      setErrorMessage(signInError.message);
+    const guard = await loginGuard("check");
+    if (guard.locked) {
+      setErrorMessage(guard.message);
       setIsSubmitting(false);
       return;
     }
+
+    const { data, error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+
+    if (signInError) {
+      const failResult = await loginGuard("fail");
+      setErrorMessage(
+        failResult.locked
+          ? failResult.message
+          : `${signInError.message} (${failResult.attemptsRemaining} attempt${failResult.attemptsRemaining === 1 ? "" : "s"} remaining before lockout.)`
+      );
+      setIsSubmitting(false);
+      return;
+    }
+
+    await loginGuard("success");
 
     const { data: profile, error: profileError } = await supabase
       .from("profiles")

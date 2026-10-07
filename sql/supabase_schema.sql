@@ -253,6 +253,20 @@ create table advisory_overrides (
   updated_at  timestamptz not null default now()
 );
 
+-- Escalating brute-force login lockout state, keyed on login email. See
+-- sql/supabase_add_login_lockouts.sql for the full policy/rationale. No
+-- RLS policies are defined below (RLS enabled, none granted) - only the
+-- service-role key, used exclusively from /api/auth/login-guard, can
+-- touch this table.
+create table login_lockouts (
+  identifier            text primary key,
+  fail_count            integer not null default 0,
+  locked_until          timestamptz,
+  lockout_stage         integer not null default -1,
+  last_lockout_ended_at timestamptz,
+  updated_at            timestamptz not null default now()
+);
+
 -- =====================================================================
 --  Reporting views — replace the old synced star schema. These compute
 --  straight from sale_items/sales/products on every query instead of
@@ -348,6 +362,7 @@ alter table stock_movements enable row level security;
 alter table services        enable row level security;
 alter table alerts          enable row level security;
 alter table advisory_overrides enable row level security;
+alter table login_lockouts     enable row level security;
 
 -- profiles: everyone can read their own row; owners can read every row
 -- (needed for a future staff-management screen).
