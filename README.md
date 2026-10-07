@@ -76,11 +76,6 @@ sql/
                                each mirrored into supabase_schema.sql
 ```
 
-`app/`, `run.py`, `config.py`, `scripts/`, `data/`, `backups/` at the repo root are the
-**original local-only Flask/MySQL implementation** this system replaced. It's left
-untouched and is no longer the live system — see [§6](#6-legacy-flaskmysql-app) before
-touching it.
-
 ---
 
 ## 4. Local development
@@ -126,17 +121,3 @@ Multi-table writes (`confirm_sale`, `edit_sale`, `undo_sale`, `record_stock_move
 `record_service`, `undo_service`) are Postgres RPC functions — `security definer`,
 row-locking, atomic — since PostgREST alone can't do a locking multi-statement
 transaction in one call.
-
----
-
-## 6. Legacy Flask/MySQL app
-
-The repo still contains the original capstone implementation this project replaced:
-local-only Flask + MySQL, a Python ETL into a star-schema warehouse, and
-APScheduler-driven background jobs. It predates the Next.js/Supabase version above and
-is **not** the live system — nothing in it runs in production.
-
-It hasn't been deleted because decommissioning it is a deliberate business decision
-(client sign-off / staff trial / side-by-side comparison), not a coding task, and
-hasn't been made yet. Don't modify or remove it without that decision being made
-explicitly.
