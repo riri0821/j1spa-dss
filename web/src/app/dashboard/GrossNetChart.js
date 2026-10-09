@@ -40,6 +40,7 @@ function CustomTooltip({ active, payload, label }) {
         fontSize: 12,
         color: theme.textPrimary,
         padding: "6px 10px",
+        boxShadow: "0 8px 24px rgba(0,0,0,0.45)",
       }}
     >
       <div style={{ fontWeight: 600 }}>{label}</div>

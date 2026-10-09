@@ -21,7 +21,8 @@ export default function StockByCategoryChart({ data }) {
   const total = slices.reduce((s, d) => s + d.units, 0) || 1;
 
   return (
-    <div className="flex flex-col items-center gap-3">
+    <div className="flex flex-col items-center gap-3 sm:flex-row sm:gap-6">
+      <div className="w-full sm:w-1/2">
       <ResponsiveContainer width="100%" height={220}>
         <PieChart>
           <Pie
@@ -45,11 +46,13 @@ export default function StockByCategoryChart({ data }) {
               borderRadius: 6,
               fontSize: 12,
               color: theme.textPrimary,
+              boxShadow: "0 8px 24px rgba(0,0,0,0.45)",
             }}
           />
         </PieChart>
       </ResponsiveContainer>
-      <ul className="grid w-full grid-cols-1 gap-x-4 gap-y-1.5 text-xs">
+      </div>
+      <ul className="grid w-full grid-cols-1 gap-x-4 gap-y-1.5 text-xs sm:w-1/2">
         {slices.map((s, i) => (
           <li key={s.category} className="flex items-center gap-2">
             <span

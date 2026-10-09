@@ -37,6 +37,7 @@ function CustomTooltip({ active, payload }) {
         color: theme.textPrimary,
         padding: "6px 10px",
         maxWidth: 220,
+        boxShadow: "0 8px 24px rgba(0,0,0,0.45)",
       }}
     >
       <div style={{ fontWeight: 600 }}>{name}</div>

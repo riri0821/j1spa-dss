@@ -1,9 +1,9 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { getKpis, getProductPerformance, summarizeDashboard } from "@/lib/analytics";
+import { getKpis, getMarginTrend, getProductPerformance, summarizeDashboard } from "@/lib/analytics";
 import { theme } from "./theme";
 import Sidebar from "./Sidebar";
-import StatTile from "./StatTile";
+import HeroStatCard from "./HeroStatCard";
 import Card from "./Card";
 import GrossNetChart from "./GrossNetChart";
 import BestSellingChart from "./BestSellingChart";
@@ -26,7 +26,22 @@ export default async function DashboardPage() {
 
   if (profile?.role !== "owner") redirect("/sales");
 
-  const [kpis, performance] = await Promise.all([getKpis(supabase), getProductPerformance(supabase)]);
+  const [kpis, performance, marginTrend] = await Promise.all([
+    getKpis(supabase),
+    getProductPerformance(supabase),
+    getMarginTrend(supabase),
+  ]);
+  // Pinned to Manila time: the server (Vercel) runs in UTC, which would show
+  // yesterday's date for the first 8 hours of each Philippine day.
+  const today = new Date().toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "Asia/Manila",
+  });
+  const delta = kpis.grossProfitMarginDeltaPct;
+  const deltaText = `${delta >= 0 ? "+" : "−"}${Math.abs(delta).toFixed(2)}% vs previous 90 days`;
   const summary = summarizeDashboard(performance);
 
   return (
@@ -40,45 +55,33 @@ export default async function DashboardPage() {
               Business Analytics &amp; Sales Intelligence
             </h1>
             <p className="text-sm" style={{ color: theme.textMuted }}>
-              {profile.full_name} · Live data
+              {today}
             </p>
           </div>
         </div>
 
-        <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <StatTile
-            icon="₱"
-            iconColor="#0ca30c"
+        <div className="mb-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)]">
+          <HeroStatCard
             label="Gross profit margin"
             value={`${kpis.grossProfitMarginPct}%`}
-            deltaPct={kpis.grossProfitMarginDeltaPct}
-            deltaSuffix="pt"
+            deltaText={deltaText}
+            trend={marginTrend}
+            secondary={[
+              { label: "Total units in stock", value: summary.totalUnitsInStock, href: "/products" },
+              { label: "Restocking items (critical)", value: summary.restockingCritical, href: "/decision-support" },
+            ]}
           />
-          <StatTile
-            icon="▤"
-            iconColor="#3987e5"
-            label="Total units in stock"
-            value={summary.totalUnitsInStock}
-            href="/products"
-          />
-          <StatTile
-            icon="!"
-            iconColor="#d03b3b"
-            label="Restocking items (critical)"
-            value={summary.restockingCritical}
-            href="/decision-support"
-          />
+          <Card title="Stock by Category" subtitle="Share of units on hand">
+            <StockByCategoryChart data={summary.categoryTotals} />
+          </Card>
         </div>
 
-        <div className="mb-6 grid gap-4 lg:grid-cols-[1.15fr_1fr_1fr]">
+        <div className="mb-6 grid gap-4 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
           <Card title="Gross & Net Sales" subtitle="Sales + services combined">
             <GrossNetChart />
           </Card>
           <Card title="Top 5 Best-Selling Parts" subtitle="Trailing 90-day unit volume">
             <BestSellingChart data={summary.topSelling} />
-          </Card>
-          <Card title="Stock by Category" subtitle="Share of units on hand">
-            <StockByCategoryChart data={summary.categoryTotals} />
           </Card>
         </div>
 
