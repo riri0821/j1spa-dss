@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from models import REGISTRY
+from models import REGISTRY, forecast_path
 
 
 def _metrics(actual: np.ndarray, pred: np.ndarray) -> dict:
@@ -50,9 +50,18 @@ def candidate_names(y: pd.Series, min_months_history: int, allowed: set | None) 
 
 
 def evaluate_one(y: pd.Series, name: str, backtest_months: int) -> dict | None:
-    """Backtest + next-month forecast for a single named model, or None if
-    there isn't enough history or the fit fails. Split out from evaluate_all
-    so callers can cache per model instead of per model-combination."""
+    """Backtest + forecast path for a single named model, or None if there
+    isn't enough history or the fit fails. Split out from evaluate_all so
+    callers can cache per model instead of per model-combination.
+
+    The returned dict carries a private "path" key: the multi-step monthly
+    forecast, whose first element is the next-month figure. It used to take
+    two full-series fits to produce those - one here for "next", another in
+    service.py for the chart's path - so ARIMA and Holt-Winters were each fit
+    on the identical series twice per request. forecast_path() gives both off
+    one fit, bit-identically. Callers must pop "path" before returning the
+    metrics to the client.
+    """
     fn, min_obs = REGISTRY[name]
     if len(y) < min_obs:
         return None
@@ -60,9 +69,11 @@ def evaluate_one(y: pd.Series, name: str, backtest_months: int) -> dict | None:
     if m is None:
         return None
     try:
-        m["next"] = fn(y)
+        path = forecast_path(name, y)
     except Exception:
         return None
+    m["path"] = tuple(path)
+    m["next"] = path[0]
     return m
 
 
@@ -78,6 +89,8 @@ def evaluate_all(y: pd.Series, backtest_months: int = 6,
     for name in names:
         m = evaluate_one(y, name, backtest_months)
         if m is not None:
+            m = dict(m)
+            m.pop("path", None)          # internal to evaluate_one, not a metric
             results[name] = m
 
     if not results:
