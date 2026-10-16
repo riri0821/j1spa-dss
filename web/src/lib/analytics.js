@@ -27,8 +27,22 @@ export async function getKpis(supabase) {
 
   return {
     grossProfitMarginPct: gpm,
-    grossProfitMarginDeltaPct: round(gpm - prevGpm, 1),
+    grossProfitMarginDeltaPct: round(gpm - prevGpm, 2),
   };
+}
+
+// Rolling 90-day margin (net / gross, sales + services combined) sampled at
+// the last 11 month-ends plus today, so the final point tracks the headline
+// tile. Windows with no revenue are dropped rather than plotted as 0%.
+export async function getMarginTrend(supabase) {
+  const { data, error } = await supabase.rpc("dashboard_margin_trend");
+  if (error) console.error("dashboard_margin_trend failed:", error.message);
+  return (data ?? [])
+    .filter((r) => Number(r.gross) > 0)
+    .map((r) => ({
+      period: r.period_start,
+      margin: round((Number(r.net) / Number(r.gross)) * 100, 2),
+    }));
 }
 
 export async function getProductPerformance(supabase) {

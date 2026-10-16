@@ -1044,17 +1044,23 @@ returns table(
 language sql
 stable
 as $$
+  -- "Sales" = sales + services combined (services at zero cost), matching
+  -- dashboard_gross_net_summary. See sql/supabase_fix_kpi_include_services.sql.
+  with combined as (
+    select sale_ts as ts, total_amount as amount, total_cost as cost
+    from sales
+    where status = 'confirmed' and sale_ts >= now() - interval '180 days'
+    union all
+    select service_ts as ts, total_amount as amount, 0::numeric as cost
+    from services
+    where status = 'confirmed' and service_ts >= now() - interval '180 days'
+  )
   select
-    coalesce(sum(total_amount) filter (
-      where sale_ts >= now() - interval '90 days'), 0) as current_revenue,
-    coalesce(sum(total_cost) filter (
-      where sale_ts >= now() - interval '90 days'), 0) as current_cost,
-    coalesce(sum(total_amount) filter (
-      where sale_ts < now() - interval '90 days'), 0) as previous_revenue,
-    coalesce(sum(total_cost) filter (
-      where sale_ts < now() - interval '90 days'), 0) as previous_cost
-  from sales
-  where status = 'confirmed' and sale_ts >= now() - interval '180 days';
+    coalesce(sum(amount) filter (where ts >= now() - interval '90 days'), 0) as current_revenue,
+    coalesce(sum(cost)   filter (where ts >= now() - interval '90 days'), 0) as current_cost,
+    coalesce(sum(amount) filter (where ts <  now() - interval '90 days'), 0) as previous_revenue,
+    coalesce(sum(cost)   filter (where ts <  now() - interval '90 days'), 0) as previous_cost
+  from combined;
 $$;
 
 grant execute on function sales_kpi_summary() to authenticated, service_role;
@@ -1183,3 +1189,53 @@ end;
 $$;
 
 grant execute on function dashboard_gross_net_summary(text, integer) to authenticated, service_role;
+
+
+-- =====================================================================
+--  Add: dashboard_margin_trend() - trailing 12 calendar months (including
+--  the current one) of sales + services gross & net, for the hero card's
+--  margin sparkline. Separate from dashboard_gross_net_summary() on
+--  purpose: that function's 'month' branch is calendar-year-to-date and the
+--  Gross & Net chart depends on that behavior.
+--
+--  Same definition as the rest of the dashboard: services count at their
+--  full amount with zero cost.
+--
+--  ADDITIVE ONLY. Run in a NEW query tab in the Supabase SQL editor.
+--  Also mirrored into sql/supabase_schema.sql.
+-- =====================================================================
+
+create or replace function dashboard_margin_trend()
+returns table(
+  period_start date,
+  gross numeric,
+  net numeric
+)
+language sql
+stable
+as $$
+  with combined as (
+    select sale_ts::date as ts, total_amount as amount, total_cost as cost
+    from sales where status = 'confirmed'
+    union all
+    select service_ts::date as ts, total_amount as amount, 0::numeric as cost
+    from services where status = 'confirmed'
+  ),
+  points as (
+    select (date_trunc('month', current_date) - make_interval(months => n) - interval '1 day')::date as p
+    from generate_series(0, 10) as n
+    union all
+    select current_date
+  )
+  select
+    points.p as period_start,
+    coalesce(sum(combined.amount), 0) as gross,
+    coalesce(sum(combined.amount - combined.cost), 0) as net
+  from points
+  left join combined on combined.ts between points.p - 89 and points.p
+  group by points.p
+  order by points.p asc;
+$$;
+
+grant execute on function dashboard_margin_trend() to authenticated, service_role;
+
